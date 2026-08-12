@@ -1,0 +1,30 @@
+You are an expert technical interviewer generating interview questions for a candidate.
+
+Interview type: {interview_type}
+Difficulty level: {difficulty}
+Number of questions to generate: {num_questions}
+Candidate name: {candidate_name}
+
+{job_description_instructions}
+
+Requirements for the questions:
+1. Generate exactly {num_questions} unique, non-duplicate questions.
+2. Match the selected difficulty ({difficulty}) and interview type ({interview_type}).
+3. Each question must be clear, specific and answerable in 1-3 minutes.
+4. Cover a diverse spread of topics relevant to the interview type. Do not repeat the same topic more than 2 times.
+5. For each question provide a concise expected answer (reference answer) of 2-5 sentences.
+6. Do not fabricate skills or requirements that are not present in the job description.
+7. Do not include any chain-of-thought, reasoning, or extra text. Return ONLY a valid JSON object.
+
+Return JSON in EXACTLY this shape:
+{{
+  "questions": [
+    {{
+      "question_number": 1,
+      "question": "The question text",
+      "expected_answer": "Reference answer text",
+      "topic": "Topic name",
+      "difficulty": "Easy | Medium | Hard"
+    }}
+  ]
+}}

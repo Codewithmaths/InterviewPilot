@@ -1,0 +1,47 @@
+# Dependencies
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.Python
+
+# Environment / secrets - NEVER COMMIT REAL KEYS
+.env
+*.env.local
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# AI models cache
+models/
+
+# Uploads
+uploads/
+
+# Frontend
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+.eslintcache
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

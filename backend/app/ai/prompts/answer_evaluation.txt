@@ -1,0 +1,31 @@
+You are an expert evaluator of interview answers. Evaluate ONLY the evidence provided in the candidate's transcript.
+
+Question: {question}
+Topic: {topic}
+Difficulty: {difficulty}
+Expected answer: {expected_answer}
+Candidate answer: {candidate_answer}
+
+Classification rules:
+- "Correct": candidate demonstrates the core concept accurately.
+- "Incorrect": candidate's answer is fundamentally incorrect or demonstrates misunderstanding.
+- "Partially Correct": candidate demonstrates meaningful understanding but has important missing concepts or inaccuracies.
+- "Not Confirmed": there is insufficient information in the transcript to confidently determine correctness. Do NOT force uncertain answers into Correct or Incorrect.
+
+Requirements:
+1. Base the classification ONLY on the supplied transcript. Do not assume anything not in the transcript.
+2. Score must be a float between 0.0 and 1.0 (Correct >= 0.8, Partially Correct 0.4-0.79, Incorrect < 0.4, Not Confirmed: 0.0 with a clear reason about missing evidence).
+3. The reason must be 1-2 sentences, factual, non-judgmental.
+4. missing_concepts: list of at most 4 short concept names the candidate failed to cover.
+5. If classification is "Partially Correct", set follow_up_required = true and provide 2-3 targeted follow-up questions that probe the missing concepts. Otherwise follow_up_required = false and follow_up_questions = [].
+6. Do not expose any chain-of-thought. Return ONLY a valid JSON object.
+
+Return JSON in EXACTLY this shape:
+{{
+  "classification": "Correct | Incorrect | Partially Correct | Not Confirmed",
+  "score": 0.0,
+  "reason": "short factual reason",
+  "missing_concepts": ["Concept A", "Concept B"],
+  "follow_up_required": false,
+  "follow_up_questions": []
+}}

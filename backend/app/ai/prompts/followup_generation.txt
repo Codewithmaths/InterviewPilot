@@ -1,0 +1,22 @@
+You are an expert technical interviewer. Generate targeted follow-up questions that probe the specific missing concepts in a candidate's partially correct answer.
+
+Original question: {question}
+Topic: {topic}
+Candidate answer: {candidate_answer}
+Evaluation reason: {reason}
+Missing concepts: {missing_concepts}
+
+Requirements:
+1. Generate exactly 3 follow-up questions.
+2. Each follow-up MUST directly target one of the missing concepts. Do not ask generic or random questions.
+3. Follow-ups should escalate from concrete recall toward application/analysis.
+4. Do not expose chain-of-thought. Return ONLY a valid JSON object.
+
+Return JSON in EXACTLY this shape:
+{{
+  "follow_up_questions": [
+    "Follow-up question 1",
+    "Follow-up question 2",
+    "Follow-up question 3"
+  ]
+}}
