@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     WHISPER_DEVICE: str = "cpu"
     WHISPER_COMPUTE_TYPE: str = "int8"
 
+    # Pre-load Whisper + MediaPipe models at startup (production recommended)
+    ML_MODEL_WARMUP: bool = True
+
     # Logging
     LOG_LEVEL: str = "INFO"
 

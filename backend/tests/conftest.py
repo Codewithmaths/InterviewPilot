@@ -1,12 +1,16 @@
 """Shared fixtures: isolated test database, app client, mocked LLM."""
 from __future__ import annotations
 
+import os
 from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+
+# Disable startup ML model warm-up so tests never download Whisper/MediaPipe models.
+os.environ.setdefault("ML_MODEL_WARMUP", "false")
 
 from app.core.database import Base, get_db
 from app.schemas.llm import EvaluationResult, QuestionBatch, ReportSection
