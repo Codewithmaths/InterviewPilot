@@ -344,9 +344,18 @@ async def answer_followup(
 
 # ---------------------------------------------------------------------------
 @router.get("/{interview_id}/report", response_model=InterviewReport)
-async def get_report(interview_id: int, db: Session = Depends(get_db)) -> InterviewReport:
+async def get_report(
+    interview_id: int,
+    refresh: bool = False,
+    db: Session = Depends(get_db),
+) -> InterviewReport:
+    """Return the stored report from the database, or generate and persist it."""
     service = ReportService(db)
     try:
+        if not refresh:
+            saved = await run_in_threadpool(service.get_saved_report, interview_id)
+            if saved is not None:
+                return saved
         return await run_in_threadpool(service.generate_report, interview_id)
     except LLMError as exc:
         raise _llm_error(exc) from exc

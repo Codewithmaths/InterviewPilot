@@ -36,6 +36,10 @@ Stores only derived face-analysis metadata: detected flag, category, confidence,
 
 Stores chronological lifecycle and synchronization events with JSON payloads.
 
+### Report
+
+Stores the generated final report as JSON (`report_json`) with `generated_at`, one row per interview (`interview_id` is unique). Reports are persisted on first generation and served directly from the database on later requests; `GET /interviews/{id}/report?refresh=true` regenerates and overwrites the stored report.
+
 ## Relationships
 
 ```text
@@ -47,6 +51,7 @@ FollowUpQuestion 1 ─── * Answer
 Answer 1 ─── 0..1 Evaluation
 Interview 1 ─── * FaceAnalysisEvent
 Interview 1 ─── * InterviewEvent
+Interview 1 ─── 0..1 Report
 ```
 
 ## Scoring

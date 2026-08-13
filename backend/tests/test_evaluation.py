@@ -69,6 +69,17 @@ def test_answer_followup_history_and_report(client, llm_factory):
     assert report_body["total_questions_asked"] == 2
     assert llm.calls["reports"] == 1
 
+    # A second fetch is served straight from the database — no LLM call.
+    cached = client.get(f"/api/interviews/{interview_id}/report")
+    assert cached.status_code == 200, cached.text
+    assert cached.json()["counts"]["Partially Correct"] == 1
+    assert llm.calls["reports"] == 1
+
+    # refresh=true regenerates and overwrites the stored report.
+    refreshed = client.get(f"/api/interviews/{interview_id}/report?refresh=true")
+    assert refreshed.status_code == 200, refreshed.text
+    assert llm.calls["reports"] == 2
+
 
 def test_multiple_followups_can_be_asked_in_sequence(client, llm_factory):
     """Regression: selecting a 2nd/3rd follow-up must not fail with

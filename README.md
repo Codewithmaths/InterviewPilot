@@ -16,6 +16,7 @@ InterviewPilot is an AI-assisted live interview platform with separate interview
 - MediaPipe FaceMesh visual cues sampled at `FACE_ANALYSIS_INTERVAL`.
 - Persistent chronological question, answer, evaluation, follow-up, face-event, and interview-event history.
 - Explainable report scoring with facial cues kept separate from knowledge evaluation.
+- Generated reports are stored in Supabase and served directly from the database on subsequent requests (`?refresh=true` regenerates).
 - Responsive interviewer and candidate React consoles.
 
 ## Architecture

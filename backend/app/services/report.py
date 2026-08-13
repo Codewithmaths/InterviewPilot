@@ -15,6 +15,7 @@ from app.models.entities import (
     Interview,
     InterviewEvent,
     Question,
+    Report,
 )
 from app.schemas.interview import InterviewReport, QuestionReportItem
 from app.services.llm import LLMService
@@ -173,7 +174,36 @@ class ReportService:
             question_analysis=question_analysis,
             generated_at=datetime.now(timezone.utc),
         )
+        self._persist(interview_id, report)
         return report
+
+    # ------------------------------------------------------------------
+    def get_saved_report(self, interview_id: int) -> InterviewReport | None:
+        """Fetch a previously generated report directly from the database."""
+        existing = (
+            self.db.query(Report)
+            .filter(Report.interview_id == interview_id)
+            .first()
+        )
+        if existing is None:
+            return None
+        return InterviewReport.model_validate(existing.report_json)
+
+    # ------------------------------------------------------------------
+    def _persist(self, interview_id: int, report: InterviewReport) -> None:
+        """Upsert the generated report so it can be fetched straight from the DB."""
+        payload = report.model_dump(mode="json")
+        existing = (
+            self.db.query(Report)
+            .filter(Report.interview_id == interview_id)
+            .first()
+        )
+        if existing is not None:
+            existing.report_json = payload
+            existing.generated_at = datetime.now(timezone.utc)
+        else:
+            self.db.add(Report(interview_id=interview_id, report_json=payload))
+        self.db.commit()
 
     # ------------------------------------------------------------------
     def _skipped_question_ids(self, interview_id: int) -> set[int]:
