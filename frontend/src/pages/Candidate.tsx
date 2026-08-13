@@ -9,7 +9,7 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useFaceSampler } from "@/hooks/useFaceSampler";
 import { useInterviewStore } from "@/store/useInterviewStore";
-import { formatDuration } from "@/lib/utils";
+import { formatDuration, isSilentAudio } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -215,6 +215,13 @@ export default function CandidatePage() {
       setPipelineStatus("idle");
       return;
     }
+    if (result.blob.size < 1000 || (await isSilentAudio(result.blob))) {
+      pushError(
+        "The recording captured no audio. Check that your microphone is not muted and the correct input device is selected, then try again.",
+      );
+      setPipelineStatus("idle");
+      return;
+    }
     setPipelineStatus("transcribing");
     wsRef.current?.send("TRANSCRIPTION_STARTED", {});
     try {
@@ -342,7 +349,7 @@ export default function CandidatePage() {
 
               <QuestionCard
                 question={currentQuestion}
-                index={interview?.current_question_index ?? currentQuestion?.question_number ?? null}
+                index={currentQuestion?.question_number ?? interview?.current_question_index ?? null}
                 total={interview?.num_questions ?? questions.length}
                 followupText={currentFollowupText}
               />

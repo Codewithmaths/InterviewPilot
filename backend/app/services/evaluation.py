@@ -128,7 +128,12 @@ class EvaluationService:
         self._persist_evaluation(answer, result)
         interview.total_questions_asked += 1
         interview.follow_up_questions_count += 1
-        interview.status = InterviewState.RUNNING.value
+        # Stay in FOLLOW_UP while sibling follow-ups remain unanswered so the
+        # interviewer can ask the next one; otherwise resume the main flow.
+        if self._has_pending_followups(followup):
+            interview.status = InterviewState.FOLLOW_UP.value
+        else:
+            interview.status = InterviewState.RUNNING.value
         self.db.commit()
         self.db.refresh(answer)
 
@@ -159,10 +164,27 @@ class EvaluationService:
         followup = self.db.get(FollowUpQuestion, followup_id)
         if followup is None or followup.interview_id != interview_id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Follow-up not found")
+        already_answered = (
+            self.db.query(Answer).filter(Answer.followup_id == followup.id).first()
+        )
+        if already_answered is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Follow-up already answered")
         interview.status = InterviewState.WAITING_FOR_ANSWER.value
         self.db.commit()
         self.db.refresh(followup)
         return followup
+
+    # ------------------------------------------------------------------
+    def _has_pending_followups(self, followup: FollowUpQuestion) -> bool:
+        """True when sibling follow-ups of the same question remain unanswered."""
+        pending = (
+            self.db.query(FollowUpQuestion)
+            .outerjoin(Answer, Answer.followup_id == FollowUpQuestion.id)
+            .filter(FollowUpQuestion.question_id == followup.question_id)
+            .filter(Answer.id.is_(None))
+            .count()
+        )
+        return pending > 0
 
     # ------------------------------------------------------------------
     def _create_followups(

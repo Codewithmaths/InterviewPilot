@@ -5,6 +5,35 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Returns true when a recorded audio blob contains no meaningful signal
+ * (digital silence or near-silence). Fails open (returns false) when the blob
+ * cannot be decoded locally, so real audio is never blocked from upload.
+ */
+export async function isSilentAudio(blob: Blob): Promise<boolean> {
+  try {
+    const ctx = new AudioContext();
+    try {
+      const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+      if (buf.duration === 0) return true;
+      const data = buf.getChannelData(0);
+      // Subsample to bound the work on long recordings.
+      const stride = Math.max(1, Math.floor(data.length / 10000));
+      let peak = 0;
+      for (let i = 0; i < data.length; i += stride) {
+        const v = Math.abs(data[i]);
+        if (v > peak) peak = v;
+      }
+      // ~-46 dBFS: below the noise floor of a working microphone.
+      return peak < 0.005;
+    } finally {
+      void ctx.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return "—";
   const m = Math.floor(seconds / 60);
@@ -14,11 +43,19 @@ export function formatDuration(seconds: number | null | undefined): string {
 
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  // The backend stores UTC timestamps, but SQLite returns them without a
+  // timezone marker. Interpret naive values as UTC so browsers convert them
+  // correctly, and display in IST as the app's standard.
+  const normalized = /(?:[zZ]|[+-]\d{2}:?\d{2})/.test(iso) ? iso : `${iso}Z`;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return "—";
+  return (
+    d.toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      dateStyle: "medium",
+      timeStyle: "short",
+    }) + " IST"
+  );
 }
 
 export function classificationColor(classification: string): string {

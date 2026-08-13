@@ -263,7 +263,14 @@ class InterviewService:
 
     def next_question(self, interview_id: int) -> Question | None:
         interview = self._get(interview_id)
-        _ensure_state(interview, {InterviewState.RUNNING.value, InterviewState.NEXT_QUESTION.value})
+        _ensure_state(
+            interview,
+            {
+                InterviewState.RUNNING.value,
+                InterviewState.NEXT_QUESTION.value,
+                InterviewState.FOLLOW_UP.value,
+            },
+        )
         next_number = (interview.current_question_index or 0) + 1
         question = (
             self.db.query(Question)

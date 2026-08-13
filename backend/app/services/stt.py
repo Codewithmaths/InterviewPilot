@@ -74,7 +74,9 @@ class SpeechToTextService:
             tmp.write(audio_bytes)
             tmp_path = Path(tmp.name)
         try:
-            segments, info = model.transcribe(str(tmp_path), beam_size=5)
+            # vad_filter skips non-speech regions so silence yields an empty
+            # transcript instead of hallucinated text on near-silent audio.
+            segments, info = model.transcribe(str(tmp_path), beam_size=5, vad_filter=True)
             text = " ".join(seg.text.strip() for seg in segments).strip()
             if not text:
                 raise SpeechToTextError("No speech detected in the audio (silence).")

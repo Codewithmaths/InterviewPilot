@@ -103,6 +103,7 @@ export interface FollowUp {
   question_id: number;
   followup_number: number;
   text: string;
+  answered: boolean;
 }
 
 export interface FaceAnalysisResult {

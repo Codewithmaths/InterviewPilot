@@ -52,6 +52,30 @@ def test_create_validation(client, llm_factory, payload):
     assert response.status_code == 422
 
 
+def test_groq_rate_limit_is_reported_as_user_friendly_error(client, llm_factory):
+    from app.services.llm import LLMRateLimitError
+
+    class RateLimitedLLM:
+        def generate_questions(self, **kwargs):
+            raise LLMRateLimitError("Groq rate limit reached")
+
+    llm_factory(RateLimitedLLM())
+    response = client.post(
+        "/api/interviews",
+        json={
+            "candidate_name": "Rate Limited Candidate",
+            "candidate_email": "rate-limit@example.com",
+            "interview_type": "Python",
+            "difficulty": "Medium",
+            "num_questions": 20,
+        },
+    )
+
+    assert response.status_code == 429
+    assert "rate limit" in response.json()["detail"].lower()
+    assert "Internal Server Error" not in response.text
+
+
 def test_lifecycle_state_machine_rejects_invalid_next(client, created_interview):
     interview_id = created_interview["id"]
     started = client.post(f"/api/interviews/{interview_id}/start")

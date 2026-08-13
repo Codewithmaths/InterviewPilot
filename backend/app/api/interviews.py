@@ -22,6 +22,7 @@ from app.schemas.interview import (
 )
 from app.services.evaluation import EvaluationService
 from app.services.interview import InterviewService, StateTransitionError
+from app.services.llm import LLMError, LLMRateLimitError
 from app.services.report import ReportService
 from app.websocket.events import WSEventType, build_message
 from app.websocket.manager import manager
@@ -32,6 +33,19 @@ router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
 def _state_error(exc: StateTransitionError) -> HTTPException:
     return HTTPException(status.HTTP_409_CONFLICT, str(exc))
+
+
+def _llm_error(exc: LLMError) -> HTTPException:
+    if isinstance(exc, LLMRateLimitError):
+        return HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Groq API rate limit reached. Please try again later, or enable "
+            "LLM_MOCK_MODE=true for local UI testing.",
+        )
+    return HTTPException(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        "The AI service is temporarily unavailable. Please try again later.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +65,10 @@ async def create_interview(
         if origin and origin.rstrip("/") in settings.cors_origin_list
         else settings.FRONTEND_URL
     ).rstrip("/")
-    interview = await run_in_threadpool(service.create_interview, data, base_url)
+    try:
+        interview = await run_in_threadpool(service.create_interview, data, base_url)
+    except LLMError as exc:
+        raise _llm_error(exc) from exc
     return interview_to_summary(interview)
 
 
@@ -204,13 +221,16 @@ async def create_answer(
 ) -> dict[str, Any]:
     """Store a candidate answer (main or follow-up) and evaluate it."""
     service = EvaluationService(db)
-    result = await run_in_threadpool(
-        service.evaluate_main_answer if data.question_id else service.evaluate_followup_answer,
-        interview_id,
-        data.question_id or data.followup_id,
-        data.transcript,
-        data.duration_seconds,
-    )
+    try:
+        result = await run_in_threadpool(
+            service.evaluate_main_answer if data.question_id else service.evaluate_followup_answer,
+            interview_id,
+            data.question_id or data.followup_id,
+            data.transcript,
+            data.duration_seconds,
+        )
+    except LLMError as exc:
+        raise _llm_error(exc) from exc
     payload = result["payload"]
     await manager.broadcast(
         interview_id, build_message(WSEventType.EVALUATION_COMPLETED, payload, interview_id)
@@ -278,9 +298,16 @@ async def answer_followup(
     interview_id: int, followup_id: int, data: AnswerCreate, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     service = EvaluationService(db)
-    result = await run_in_threadpool(
-        service.evaluate_followup_answer, interview_id, followup_id, data.transcript, data.duration_seconds
-    )
+    try:
+        result = await run_in_threadpool(
+            service.evaluate_followup_answer,
+            interview_id,
+            followup_id,
+            data.transcript,
+            data.duration_seconds,
+        )
+    except LLMError as exc:
+        raise _llm_error(exc) from exc
     await manager.broadcast(
         interview_id,
         build_message(WSEventType.EVALUATION_COMPLETED, result["payload"], interview_id),
@@ -297,7 +324,10 @@ async def answer_followup(
 @router.get("/{interview_id}/report", response_model=InterviewReport)
 async def get_report(interview_id: int, db: Session = Depends(get_db)) -> InterviewReport:
     service = ReportService(db)
-    return await run_in_threadpool(service.generate_report, interview_id)
+    try:
+        return await run_in_threadpool(service.generate_report, interview_id)
+    except LLMError as exc:
+        raise _llm_error(exc) from exc
 
 
 @router.get("/{interview_id}/state")

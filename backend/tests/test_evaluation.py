@@ -70,6 +70,82 @@ def test_answer_followup_history_and_report(client, llm_factory):
     assert llm.calls["reports"] == 1
 
 
+def test_multiple_followups_can_be_asked_in_sequence(client, llm_factory):
+    """Regression: selecting a 2nd/3rd follow-up must not fail with
+    'No pending follow-ups in the current state'."""
+    llm_factory(FakeLLM())
+    created = client.post(
+        "/api/interviews",
+        json={
+            "candidate_name": "Followup Candidate",
+            "candidate_email": "followup@example.com",
+            "interview_type": "Python",
+            "difficulty": "Medium",
+            "num_questions": 20,
+        },
+    ).json()
+    interview_id = created["id"]
+    assert client.post(f"/api/interviews/{interview_id}/start").status_code == 200
+    question = client.get(f"/api/interviews/{interview_id}/questions").json()[0]
+
+    answer = client.post(
+        f"/api/interviews/{interview_id}/answers",
+        json={"question_id": question["id"], "transcript": "A partial answer.", "duration_seconds": 30},
+    )
+    assert answer.status_code == 200, answer.text
+
+    followups = client.get(f"/api/interviews/{interview_id}/followups").json()
+    assert len(followups) == 3
+
+    # Ask and answer follow-ups one by one; every select must succeed.
+    for fu in followups:
+        selected = client.post(f"/api/interviews/{interview_id}/followups/{fu['id']}/select")
+        assert selected.status_code == 200, selected.text
+        answered = client.post(
+            f"/api/interviews/{interview_id}/followups/{fu['id']}/answer",
+            json={"followup_id": fu["id"], "transcript": "Follow-up answer.", "duration_seconds": 15},
+        )
+        assert answered.status_code == 200, answered.text
+
+    # Re-selecting an already answered follow-up is rejected.
+    reselect = client.post(f"/api/interviews/{interview_id}/followups/{followups[0]['id']}/select")
+    assert reselect.status_code == 409
+
+    # All follow-ups answered: the main flow resumes and next question works.
+    after = client.get(f"/api/interviews/{interview_id}/followups").json()
+    assert all(f["answered"] for f in after)
+    nxt = client.post(f"/api/interviews/{interview_id}/question/next")
+    assert nxt.status_code == 200, nxt.text
+
+
+def test_next_question_allowed_while_followups_pending(client, llm_factory):
+    """The interviewer may skip remaining follow-ups and move on."""
+    llm_factory(FakeLLM())
+    created = client.post(
+        "/api/interviews",
+        json={
+            "candidate_name": "Skip Candidate",
+            "candidate_email": "skip@example.com",
+            "interview_type": "Python",
+            "difficulty": "Medium",
+            "num_questions": 20,
+        },
+    ).json()
+    interview_id = created["id"]
+    assert client.post(f"/api/interviews/{interview_id}/start").status_code == 200
+    question = client.get(f"/api/interviews/{interview_id}/questions").json()[0]
+
+    answer = client.post(
+        f"/api/interviews/{interview_id}/answers",
+        json={"question_id": question["id"], "transcript": "A partial answer.", "duration_seconds": 30},
+    )
+    assert answer.status_code == 200, answer.text
+
+    # Follow-ups are pending but unanswered; moving to the next question works.
+    nxt = client.post(f"/api/interviews/{interview_id}/question/next")
+    assert nxt.status_code == 200, nxt.text
+
+
 def test_all_allowed_classifications_are_schema_valid():
     from app.schemas.llm import EvaluationResult
 

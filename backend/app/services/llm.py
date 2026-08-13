@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 
 from groq import Groq
@@ -31,10 +32,23 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent / "ai" / "prompts"
 
 MAX_TOKENS = 4000
 TEMPERATURE = 0.3
+QUESTION_MAX_TOKENS = 4000
+EVALUATION_MAX_TOKENS = 1000
+FOLLOWUP_MAX_TOKENS = 500
+REPORT_MAX_TOKENS = 1500
+
+# Groq free-tier limits are mostly short per-minute windows; ride through
+# bursts by waiting for the Retry-After window instead of failing instantly.
+RATE_LIMIT_RETRIES = 3
+RATE_LIMIT_MAX_WAIT_SECONDS = 30.0
 
 
 class LLMError(Exception):
     """Raised when the LLM cannot produce a valid response."""
+
+
+class LLMRateLimitError(LLMError):
+    """Raised when Groq rejects a request because the account is rate limited."""
 
 
 class MockLLMError(Exception):
@@ -68,6 +82,65 @@ def _extract_json_object(raw: str) -> dict:
         raise
 
 
+def _parse_duration_seconds(raw: object) -> float | None:
+    try:
+        return float(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        # Groq uses durations such as "1m5.5s" and "185ms".
+        match = re.fullmatch(
+            r"(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)s)?(?:(\d+(?:\.\d+)?)ms)?",
+            str(raw or "").strip(),
+        )
+        if not match:
+            return None
+        return (
+            float(match.group(1) or 0) * 60
+            + float(match.group(2) or 0)
+            + float(match.group(3) or 0) / 1000
+        )
+
+
+def _retry_after_seconds(exc: Exception) -> float:
+    """Best-effort wait time from Groq's rate-limit headers (capped)."""
+    response = getattr(exc, "response", None)
+    headers = {
+        str(key).lower(): str(value)
+        for key, value in (getattr(response, "headers", None) or {}).items()
+    }
+    remaining_tokens = headers.get("x-ratelimit-remaining-tokens")
+    remaining_requests = headers.get("x-ratelimit-remaining-requests")
+    try:
+        token_limit_hit = remaining_tokens is not None and float(remaining_tokens) <= 0
+    except ValueError:
+        token_limit_hit = False
+    try:
+        request_limit_hit = remaining_requests is not None and float(remaining_requests) <= 0
+    except ValueError:
+        request_limit_hit = False
+
+    if token_limit_hit:
+        raw = headers.get("x-ratelimit-reset-tokens")
+    elif request_limit_hit:
+        raw = headers.get("retry-after") or headers.get("x-ratelimit-reset-requests")
+    else:
+        raw = headers.get("retry-after") or headers.get("x-ratelimit-reset-tokens")
+
+    wait = _parse_duration_seconds(raw)
+    if wait is None:
+        retry_match = re.search(
+            r"(?:try again in|retry after)\s+((?:\d+(?:\.\d+)?m)?(?:\d+(?:\.\d+)?s)?)",
+            str(exc),
+            re.IGNORECASE,
+        )
+        if retry_match:
+            wait = _parse_duration_seconds(retry_match.group(1))
+        else:
+            wait = 5.0
+    if wait is None:
+        wait = 5.0
+    return max(0.25, min(wait, RATE_LIMIT_MAX_WAIT_SECONDS))
+
+
 class LLMService:
     """Wraps Groq chat completions with schema-validated output."""
 
@@ -88,11 +161,20 @@ class LLMService:
     # ------------------------------------------------------------------
     # Low-level chat + JSON decode with retry
     # ------------------------------------------------------------------
-    def _chat_json(self, system: str, user: str, model: BaseModel, retries: int = 1) -> dict:
+    def _chat_json(
+        self,
+        system: str,
+        user: str,
+        model: BaseModel,
+        retries: int = 1,
+        max_tokens: int = MAX_TOKENS,
+    ) -> dict:
         if self.client is None:
             raise MockLLMError("LLM not configured (mock mode); this path requires a real model.")
         last_error: Exception | None = None
-        for attempt in range(retries + 1):
+        output_attempts = 0
+        rate_limit_attempts = 0
+        while True:
             try:
                 response = self.client.chat.completions.create(
                     model=self.settings.GROQ_MODEL,
@@ -101,7 +183,7 @@ class LLMService:
                         {"role": "user", "content": user},
                     ],
                     temperature=TEMPERATURE,
-                    max_tokens=MAX_TOKENS,
+                    max_tokens=max_tokens,
                 )
                 raw = response.choices[0].message.content or ""
                 data = _extract_json_object(raw)
@@ -109,10 +191,32 @@ class LLMService:
                 return data
             except (ValidationError, ValueError, json.JSONDecodeError, KeyError) as exc:
                 last_error = exc
-                logger.warning("LLM structured output invalid (attempt %s): %s", attempt + 1, exc)
+                output_attempts += 1
+                logger.warning("LLM structured output invalid (attempt %s): %s", output_attempts, exc)
+                if output_attempts > retries:
+                    break
             except Exception as exc:  # network / rate limit / model errors
+                message = str(exc).lower()
+                if getattr(exc, "status_code", None) == 429 or "rate_limit_exceeded" in message:
+                    rate_limit_attempts += 1
+                    if rate_limit_attempts > RATE_LIMIT_RETRIES:
+                        raise LLMRateLimitError(
+                            "Groq rate limit reached. Please try again later."
+                        ) from exc
+                    wait = _retry_after_seconds(exc)
+                    logger.warning(
+                        "Groq rate limit hit; retrying in %.1f s (%s/%s).",
+                        wait,
+                        rate_limit_attempts,
+                        RATE_LIMIT_RETRIES,
+                    )
+                    time.sleep(wait)
+                    continue
                 last_error = exc
-                logger.warning("LLM call failed (attempt %s): %s", attempt + 1, exc)
+                output_attempts += 1
+                logger.warning("LLM call failed (attempt %s): %s", output_attempts, exc)
+                if output_attempts > retries:
+                    break
         raise LLMError(f"LLM could not produce valid structured output: {last_error}")
 
     # ------------------------------------------------------------------
@@ -145,7 +249,12 @@ class LLMService:
             candidate_name=candidate_name,
             job_description_instructions=jd_instructions,
         )
-        data = self._chat_json("You output only valid JSON.", user, QuestionBatch)
+        data = self._chat_json(
+            "You output only valid JSON.",
+            user,
+            QuestionBatch,
+            max_tokens=QUESTION_MAX_TOKENS,
+        )
         return QuestionBatch.model_validate(data)
 
     def evaluate_answer(
@@ -166,7 +275,12 @@ class LLMService:
             expected_answer=expected_answer,
             candidate_answer=candidate_answer,
         )
-        data = self._chat_json("You output only valid JSON.", user, EvaluationResult)
+        data = self._chat_json(
+            "You output only valid JSON.",
+            user,
+            EvaluationResult,
+            max_tokens=EVALUATION_MAX_TOKENS,
+        )
         result = EvaluationResult.model_validate(data)
         # Enforce internal consistency: follow-up flags must match classification.
         if result.classification != "Partially Correct":
@@ -196,7 +310,12 @@ class LLMService:
             reason=reason,
             missing_concepts=json.dumps(missing_concepts),
         )
-        data = self._chat_json("You output only valid JSON.", user, FollowUpBatch)
+        data = self._chat_json(
+            "You output only valid JSON.",
+            user,
+            FollowUpBatch,
+            max_tokens=FOLLOWUP_MAX_TOKENS,
+        )
         return FollowUpBatch.model_validate(data).follow_up_questions
 
     def generate_final_report(self, context: str) -> ReportSection:
@@ -213,7 +332,12 @@ class LLMService:
             )
         system = load_prompt("final_report.txt")
         user = system + "\n\nInterview context:\n" + context
-        data = self._chat_json("You output only valid JSON.", user, ReportSection)
+        data = self._chat_json(
+            "You output only valid JSON.",
+            user,
+            ReportSection,
+            max_tokens=REPORT_MAX_TOKENS,
+        )
         return ReportSection.model_validate(data)
 
     # ------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Loader2, PlayCircle, Video } from "lucide-react";
+import { Check, Copy, Loader2, PlayCircle, Video } from "lucide-react";
 
 import { api, ApiError } from "@/lib/api";
 import { WsClient } from "@/lib/ws";
@@ -55,8 +55,10 @@ export default function InterviewerPage() {
   const [loading, setLoading] = useState(true);
   const [started, setStarted] = useState(false);
   const [wsClient, setWsClient] = useState<WsClient | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   const wsRef = useRef<WsClient | null>(null);
   const idRef = useRef(id);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const media = useMedia();
   const rtc = useWebRTC("interviewer", wsClient, media.stream);
@@ -175,6 +177,28 @@ export default function InterviewerPage() {
   }, [media.stream, peerConnected, rtc, wsStatus]);
 
   const currentQuestionData = currentQuestion ?? null;
+  // Only unanswered follow-ups can be asked; answered ones stay in history.
+  const askableFollowups = pendingFollowups.filter((f) => !f.answered);
+
+  // Reset the "Copied" indicator timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  const handleCopyLink = useCallback(async () => {
+    const url = interview?.join_url;
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      pushError("Could not copy the link automatically. Please copy it manually.");
+    }
+  }, [interview?.join_url, pushError]);
 
   const handleStart = useCallback(async () => {
     if (!id) return;
@@ -215,15 +239,16 @@ export default function InterviewerPage() {
   }, [id, setCurrentQuestion, setLastEvaluation, pushError]);
 
   const handlePrevious = useCallback(async () => {
-    if (!id || !interview?.current_question_index || interview.current_question_index <= 1) return;
+    const currentNumber = currentQuestion?.question_number ?? interview?.current_question_index;
+    if (!id || !currentNumber || currentNumber <= 1) return;
     try {
-      const q = await api.moveToQuestion(id, interview.current_question_index - 1);
+      const q = await api.moveToQuestion(id, currentNumber - 1);
       setCurrentQuestion(q);
       setLastEvaluation(null);
     } catch (err) {
       pushError(err instanceof ApiError ? err.message : "Could not move to previous question");
     }
-  }, [id, interview, setCurrentQuestion, setLastEvaluation, pushError]);
+  }, [id, currentQuestion, interview, setCurrentQuestion, setLastEvaluation, pushError]);
 
   const handleEnd = useCallback(async () => {
     if (!id) return;
@@ -304,7 +329,25 @@ export default function InterviewerPage() {
               <p className="text-sm text-muted-foreground">
                 Share this link with the candidate to join:
               </p>
-              <code className="block rounded-md bg-secondary/50 p-3 text-xs">{interview?.join_url}</code>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 break-all rounded-md bg-secondary/50 p-3 text-xs">
+                  {interview?.join_url}
+                </code>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyLink}
+                  disabled={!interview?.join_url}
+                >
+                  {linkCopied ? (
+                    <Check className="h-4 w-4 text-emerald-400" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                  {linkCopied ? "Copied" : "Copy link"}
+                </Button>
+              </div>
               <Button onClick={handleStart} disabled={!interview}>
                 <PlayCircle className="h-4 w-4" /> Grant permissions &amp; Start Interview
               </Button>
@@ -357,16 +400,16 @@ export default function InterviewerPage() {
           <div className="space-y-4 xl:col-span-5">
             <QuestionCard
               question={currentQuestionData}
-              index={interview?.current_question_index ?? currentQuestionData?.question_number ?? null}
+              index={currentQuestionData?.question_number ?? interview?.current_question_index ?? null}
               total={interview?.num_questions ?? questions.length}
             />
             <ExpectedAnswerCard expectedAnswer={currentQuestionData?.expected_answer ?? null} />
             {lastEvaluation && <EvaluationCard evaluation={lastEvaluation} />}
             <FollowUpPanel
-              followups={pendingFollowups}
+              followups={askableFollowups}
               onSelect={handleSelectFollowup}
               disabled={isBusy || state === "COMPLETED"}
-              selected={state === "WAITING_FOR_ANSWER" ? pendingFollowups[0]?.id : null}
+              selected={state === "WAITING_FOR_ANSWER" ? askableFollowups[0]?.id : null}
             />
             {state === "WAITING_FOR_ANSWER" && (
               <Alert>
