@@ -177,8 +177,12 @@ export default function InterviewerPage() {
   }, [media.stream, peerConnected, rtc, wsStatus]);
 
   const currentQuestionData = currentQuestion ?? null;
-  // Only unanswered follow-ups can be asked; answered ones stay in history.
-  const askableFollowups = pendingFollowups.filter((f) => !f.answered);
+  // Show follow-ups only alongside the original question they belong to, and
+  // only while they are unanswered. Skipped follow-ups from previous questions
+  // no longer clutter the panel.
+  const askableFollowups = pendingFollowups.filter(
+    (f) => !f.answered && f.question_id === currentQuestionData?.id,
+  );
 
   // Reset the "Copied" indicator timer on unmount.
   useEffect(() => {
