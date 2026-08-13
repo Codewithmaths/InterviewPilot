@@ -321,10 +321,10 @@ export default function InterviewerPage() {
       <main className="container mt-6">
         {errors.length > 0 && (
           <div className="mb-4 space-y-2">
-            {errors.map((e, i) => (
-              <Alert key={i} variant="destructive">
+            {errors.map((e) => (
+              <Alert key={e.id} variant="destructive">
                 <AlertTitle>Error</AlertTitle>
-                <AlertDescription>{e}</AlertDescription>
+                <AlertDescription>{e.message}</AlertDescription>
               </Alert>
             ))}
           </div>

@@ -338,10 +338,10 @@ export default function CandidatePage() {
 
               {errors.length > 0 && (
                 <div className="space-y-2">
-                  {errors.map((e, i) => (
-                    <Alert key={i} variant="destructive">
+                  {errors.map((e) => (
+                    <Alert key={e.id} variant="destructive">
                       <AlertTitle>Notice</AlertTitle>
-                      <AlertDescription>{e}</AlertDescription>
+                      <AlertDescription>{e.message}</AlertDescription>
                     </Alert>
                   ))}
                 </div>

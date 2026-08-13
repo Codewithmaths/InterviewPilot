@@ -1,9 +1,14 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useInterviewStore } from "@/store/useInterviewStore";
 
 beforeEach(() => {
+  vi.useFakeTimers();
   useInterviewStore.getState().reset();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("useInterviewStore", () => {
@@ -18,12 +23,18 @@ describe("useInterviewStore", () => {
     expect(useInterviewStore.getState().transcript).toBe("candidate answer");
   });
 
-  it("limits retained errors and clears them", () => {
+  it("limits retained errors, clears them, and auto-dismisses after 5s", () => {
     const store = useInterviewStore.getState();
     for (let i = 0; i < 8; i += 1) store.pushError(`error-${i}`);
 
     expect(useInterviewStore.getState().errors).toHaveLength(5);
-    expect(useInterviewStore.getState().errors[0]).toBe("error-3");
+    expect(useInterviewStore.getState().errors[0].message).toBe("error-3");
+
+    vi.advanceTimersByTime(5000);
+    expect(useInterviewStore.getState().errors).toHaveLength(0);
+
+    store.pushError("transient");
+    expect(useInterviewStore.getState().errors[0].message).toBe("transient");
     store.clearErrors();
     expect(useInterviewStore.getState().errors).toEqual([]);
   });
