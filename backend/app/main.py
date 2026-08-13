@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import face_analysis, interviews, transcription, ws
 from app.core.config import get_settings
-from app.core.database import init_db
+from app.core.database import db_display_url, init_db
 from app.core.logging import configure_logging, get_logger
 
 configure_logging()
@@ -41,7 +41,7 @@ async def _warm_up_ml_models() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    logger.info("Database initialised (%s)", settings.DATABASE_URL)
+    logger.info("Database initialised (%s)", db_display_url(settings.DATABASE_URL))
     if settings.LLM_MOCK_MODE or not settings.GROQ_API_KEY:
         logger.warning(
             "LLM is running in TEMPORARY DEVELOPMENT MOCK mode. "

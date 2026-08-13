@@ -11,18 +11,32 @@ from app.core.config import get_settings
 settings = get_settings()
 
 DB_URL = settings.DATABASE_URL
+IS_SQLITE = DB_URL.startswith("sqlite")
+IS_POSTGRES = DB_URL.startswith("postgresql")
 
 # Keep a single persistent in-memory connection when SQLite in-memory is requested.
-connect_args = {"check_same_thread": False} if DB_URL.startswith("sqlite") else {}
+connect_args = {"check_same_thread": False} if IS_SQLITE else {}
+if IS_POSTGRES and settings.DATABASE_SSLMODE:
+    connect_args["sslmode"] = settings.DATABASE_SSLMODE
 
-engine = create_engine(
-    DB_URL,
-    connect_args=connect_args,
-    pool_pre_ping=True,
-    future=True,
-)
+engine_options: dict = {"pool_pre_ping": True, "future": True}
+if not IS_SQLITE:
+    engine_options["pool_size"] = settings.DATABASE_POOL_SIZE
+    engine_options["max_overflow"] = settings.DATABASE_MAX_OVERFLOW
+
+engine = create_engine(DB_URL, connect_args=connect_args, **engine_options)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+
+def db_display_url(url: str) -> str:
+    """Mask the password portion of a database URL for safe logging."""
+    if "://" in url and "@" in url:
+        scheme, rest = url.split("://", 1)
+        userinfo, host = rest.rsplit("@", 1)
+        user = userinfo.split(":", 1)[0]
+        return f"{scheme}://{user}:***@{host}"
+    return url
 
 
 class Base(DeclarativeBase):

@@ -25,6 +25,10 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "sqlite:///./interview_analyzer.db"
+    # Postgres/SSL settings (Supabase requires SSL). Only applied to postgres URLs.
+    DATABASE_SSLMODE: str = "require"
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 10
 
     # Server
     BACKEND_HOST: str = "127.0.0.1"
