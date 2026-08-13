@@ -127,6 +127,8 @@ def llm_factory(monkeypatch):
 def client(tmp_path, monkeypatch):
     from app.main import app
 
+    # Runtime uses Supabase (PostgreSQL); unit tests use an isolated throwaway
+    # SQLite file so they stay fast, offline, and never touch real data.
     test_db = f"sqlite:///{tmp_path / 'test.db'}"
     engine = create_engine(test_db, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)

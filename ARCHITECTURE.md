@@ -68,8 +68,8 @@ The candidate browser samples one downscaled JPEG at `FACE_ANALYSIS_INTERVAL`. T
 
 ## Persistence
 
-The MVP uses SQLite through SQLAlchemy. The model uses standard foreign keys and JSON columns and is designed for a future PostgreSQL migration. Database tables are created automatically during FastAPI startup.
+The application uses Supabase (PostgreSQL) through SQLAlchemy with the `psycopg2` driver. The model uses standard foreign keys and JSON columns. Database tables are created automatically during FastAPI startup.
 
 ## Production Path
 
-For production, add authentication/authorization, HTTPS, TURN, PostgreSQL migrations, Redis-backed WebSocket/signaling state, background workers for Whisper/LLM jobs, object storage only if recordings are explicitly enabled, rate limiting, audit logging, and tenant isolation.
+For production, add authentication/authorization, HTTPS, TURN, PostgreSQL migrations (Alembic), Redis-backed WebSocket/signaling state, background workers for Whisper/LLM jobs, object storage only if recordings are explicitly enabled, rate limiting, audit logging, and tenant isolation.

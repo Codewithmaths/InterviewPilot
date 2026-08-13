@@ -23,8 +23,24 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     LLM_MOCK_MODE: bool = False
 
-    # Database
-    DATABASE_URL: str = "sqlite:///./interview_analyzer.db"
+    # Database — Supabase (PostgreSQL). Required; set to the Supabase
+    # "Session pooler" connection string from Project Settings -> Database.
+    DATABASE_URL: str = ""
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def validate_database_url(cls, v: str) -> str:
+        if not v:
+            raise ValueError(
+                "DATABASE_URL is required. Set it to your Supabase connection string "
+                "(Project Settings -> Database -> Connection string -> Session pooler)."
+            )
+        if not v.startswith("postgresql"):
+            raise ValueError(
+                "DATABASE_URL must be a postgresql:// connection string. "
+                "Supabase is the only supported database."
+            )
+        return v
     # Postgres/SSL settings (Supabase requires SSL). Only applied to postgres URLs.
     DATABASE_SSLMODE: str = "require"
     DATABASE_POOL_SIZE: int = 10

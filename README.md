@@ -1,6 +1,6 @@
 # InterviewPilot
 
-InterviewPilot is an AI-assisted live interview platform with separate interviewer and candidate consoles. It combines Groq question generation and answer evaluation, local Faster-Whisper transcription, MediaPipe facial cues, WebRTC media, WebSocket state synchronization, SQLite persistence, and a final report dashboard.
+InterviewPilot is an AI-assisted live interview platform with separate interviewer and candidate consoles. It combines Groq question generation and answer evaluation, local Faster-Whisper transcription, MediaPipe facial cues, WebRTC media, WebSocket state synchronization, Supabase (PostgreSQL) persistence, and a final report dashboard.
 
 ## Features
 
@@ -26,7 +26,7 @@ React/Vite consoles
   | WebSocket: state/events + WebRTC signaling
   v
 FastAPI application
-  | SQLAlchemy / SQLite
+  | SQLAlchemy / Supabase (PostgreSQL)
   | Groq LLM service
   | Faster-Whisper service
   | MediaPipe/OpenCV service
@@ -93,7 +93,7 @@ This mode is not a replacement for production Groq output.
 
 ## Testing
 
-Backend tests use an isolated SQLite database and never make real Groq calls:
+Backend tests use an isolated temporary SQLite database (runtime uses Supabase) and never make real Groq calls:
 
 ```powershell
 cd backend
@@ -145,7 +145,7 @@ npm run build
 ## Known Limitations
 
 - Browser-level two-party WebRTC media testing requires two permission-capable browser sessions and was not automated in this environment. The signaling path and frontend wiring are implemented and WebSocket-tested.
-- SQLite is suitable for the MVP only. PostgreSQL, a migration tool, background workers, and a shared signaling store are future production work.
+- Schema is created automatically via `Base.metadata.create_all()`; a migration tool (e.g. Alembic), background workers, and a shared signaling store are future production work.
 - Facial categories are geometry-based visual cues, not validated psychological measurements.
 - Resume upload, authentication, persistent raw recordings, and multi-tenant access control are not included.
 

@@ -14,7 +14,7 @@
 | Targeted follow-ups | Yes | `EvaluationService`, follow-up prompt and model | Follow-up E2E pytest |
 | Follow-up answers/evaluations | Yes | Follow-up select/answer endpoints | Follow-up E2E pytest |
 | Chronological persistent history | Yes | `InterviewService.get_history`, database relations | History E2E pytest |
-| SQLite persistence | Yes | SQLAlchemy engine/models | Isolated SQLite pytest and runtime smoke test |
+| Supabase (PostgreSQL) persistence | Yes | SQLAlchemy engine/models | Isolated pytest and runtime smoke test |
 | Interview state machine | Yes | `TRANSITIONS`, transition service and WebSocket state events | State-machine pytest and WS test |
 | WebSocket events | Yes | `websocket/events.py`, `manager.py`, `api/ws.py` | `ws_integration.py` |
 | Real WebRTC signaling | Implemented, browser validation pending | `useWebRTC.ts`, `api/ws.py` | SDP/ICE relay integration test; two-browser media test pending |

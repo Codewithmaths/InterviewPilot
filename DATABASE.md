@@ -1,6 +1,6 @@
 # Database Design
 
-The MVP uses SQLite with SQLAlchemy 2.x. `Base.metadata.create_all()` runs on application startup. The schema uses ordinary foreign keys and can be migrated to PostgreSQL later.
+The application uses Supabase (PostgreSQL) with SQLAlchemy 2.x and the `psycopg2` driver. `Base.metadata.create_all()` runs on application startup and creates the tables, enum types, and indexes automatically — no manual SQL is required. The connection is configured via `DATABASE_URL` in `.env` (see `SETUP.md`).
 
 ## Entities
 

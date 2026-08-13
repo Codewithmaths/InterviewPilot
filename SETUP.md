@@ -7,7 +7,7 @@ Copy `.env.example` to `.env` in the project root. Required values:
 ```text
 GROQ_API_KEY=...
 GROQ_MODEL=llama-3.3-70b-versatile
-DATABASE_URL=sqlite:///./interview_analyzer.db
+DATABASE_URL=postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
 BACKEND_HOST=127.0.0.1
 BACKEND_PORT=8000
 FRONTEND_URL=http://127.0.0.1:5173
@@ -16,6 +16,8 @@ WHISPER_MODEL=base
 WHISPER_DEVICE=cpu
 WHISPER_COMPUTE_TYPE=int8
 ```
+
+`DATABASE_URL` is required and must be a Supabase (PostgreSQL) connection string from the dashboard (Project Settings -> Database -> Connection string -> Session pooler).
 
 Never place `GROQ_API_KEY` in frontend environment variables or source code.
 
@@ -26,7 +28,7 @@ Never place `GROQ_API_KEY` in frontend environment variables or source code.
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The first transcription request may download the Whisper model. Database tables are initialized automatically.
+The first transcription request may download the Whisper model. Database tables are initialized automatically on startup.
 
 ## Frontend
 
@@ -50,6 +52,6 @@ npm run build
 - Use HTTPS so browsers permit camera/microphone access outside localhost.
 - Set `FRONTEND_URL` to the public frontend origin.
 - Configure a TURN server and pass its ICE credentials to `frontend/src/hooks/useWebRTC.ts`.
-- Replace SQLite with PostgreSQL and add migrations before multi-worker deployment.
+- Add a migration tool (e.g. Alembic) and a shared WebSocket/signaling store such as Redis when running multiple API workers.
 - Add authentication and authorization before sharing interview links publicly.
 - Add a shared WebSocket/signaling backend such as Redis when running multiple API workers.
