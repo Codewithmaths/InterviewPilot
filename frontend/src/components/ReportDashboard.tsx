@@ -12,6 +12,7 @@ const CLASS_COLORS: Record<string, string> = {
   Incorrect: "#ef4444",
   "Partially Correct": "#f59e0b",
   "Not Confirmed": "#94a3b8",
+  Skipped: "#8b5cf6",
   "Not Answered": "#64748b",
 };
 
@@ -27,7 +28,7 @@ function Stat({ label, value, sub }: { label: string; value: string | number; su
 
 export function ReportDashboard({ report }: { report: InterviewReport }) {
   const counts = Object.entries(report.counts)
-    .filter(([k]) => k !== "Not Answered" || (report.counts[k] ?? 0) > 0)
+    .filter(([k, v]) => (v ?? 0) > 0 || (k !== "Skipped" && k !== "Not Answered"))
     .map(([name, value]) => ({ name, value }));
 
   const visualData = Object.entries(report.visual_cue_summary).map(([name, value]) => ({
@@ -36,6 +37,7 @@ export function ReportDashboard({ report }: { report: InterviewReport }) {
   }));
 
   const scorePct = report.performance_score !== null ? Math.round(report.performance_score * 100) : null;
+  const skipped = report.counts["Skipped"] ?? 0;
 
   return (
     <div className="space-y-6">
@@ -50,7 +52,7 @@ export function ReportDashboard({ report }: { report: InterviewReport }) {
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="Candidate" value={report.candidate_name} sub={`${report.interview_type} · ${report.difficulty}`} />
           <Stat label="Date" value={formatDate(report.date)} sub={`Duration ${formatDuration(report.duration_seconds)}`} />
-          <Stat label="Questions" value={report.total_questions_asked} sub={`${report.main_questions_count} main + ${report.follow_up_questions_count} follow-up`} />
+          <Stat label="Questions" value={report.total_questions_asked} sub={`${report.main_questions_count} main + ${report.follow_up_questions_count} follow-up${skipped > 0 ? ` · ${skipped} skipped` : ""}`} />
           <Stat
             label="Performance Score"
             value={scorePct !== null ? `${scorePct}%` : "—"}
@@ -179,6 +181,15 @@ export function ReportDashboard({ report }: { report: InterviewReport }) {
                 )}
               </div>
               {q.reason && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{q.reason}</p>}
+              {q.metrics && q.metrics.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {q.metrics.map((m) => (
+                    <Badge key={m.name} variant="muted" title={m.note}>
+                      {m.name} {Math.round(m.score * 100)}%
+                    </Badge>
+                  ))}
+                </div>
+              )}
               {q.follow_up_answers.length > 0 && (
                 <div className="mt-2 space-y-1.5 border-t border-border pt-2">
                   {q.follow_up_answers.map((fu, i) => (

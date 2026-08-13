@@ -75,6 +75,7 @@ class EvaluationService:
             "score": result.score,
             "reason": result.reason,
             "missing_concepts": result.missing_concepts,
+            "metrics": [m.model_dump() for m in result.metrics],
             "follow_up_required": result.follow_up_required,
             "follow_up_questions": result.follow_up_questions,
             "followup_ids": [],
@@ -147,6 +148,7 @@ class EvaluationService:
             "score": result.score,
             "reason": result.reason,
             "missing_concepts": result.missing_concepts,
+            "metrics": [m.model_dump() for m in result.metrics],
             "follow_up_required": False,
             "follow_up_questions": [],
             "followup_ids": [],
@@ -236,6 +238,7 @@ class EvaluationService:
             score=result.score,
             reason=result.reason,
             missing_concepts=result.missing_concepts,
+            metric_scores=[m.model_dump() for m in result.metrics],
             follow_up_required=result.follow_up_required,
             follow_up_questions=result.follow_up_questions,
         )

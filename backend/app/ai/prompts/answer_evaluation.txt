@@ -12,9 +12,20 @@ Classification rules:
 - "Partially Correct": candidate demonstrates meaningful understanding but has important missing concepts or inaccuracies.
 - "Not Confirmed": there is insufficient information in the transcript to confidently determine correctness. Do NOT force uncertain answers into Correct or Incorrect.
 
+Metric evaluation (question-type aware):
+1. Infer the question type from the question content. Examples: Conceptual/Theory, Coding/Implementation, Scenario/Problem-solving, Design/Architecture, Behavioral/Experience, Definitional.
+2. Score the candidate on 3-4 metrics that are MOST relevant to that question type, each a float between 0.0 and 1.0. Pick metric names from the relevant set (adapt if needed):
+   - Conceptual/Theory: Accuracy, Completeness, Clarity, Depth
+   - Coding/Implementation: Correctness, Efficiency, Code Quality, Explanation
+   - Scenario/Problem-solving: Correctness, Approach, Reasoning, Communication
+   - Design/Architecture: Feasibility, Completeness, Trade-off Awareness, Communication
+   - Behavioral/Experience: Relevance, Structure, Concreteness, Communication
+   - Definitional: Accuracy, Precision, Examples
+3. Add a one-line factual note for any metric scored below 0.6 explaining the shortfall; leave the note empty otherwise.
+
 Requirements:
-1. Base the classification ONLY on the supplied transcript. Do not assume anything not in the transcript.
-2. Score must be a float between 0.0 and 1.0 (Correct >= 0.8, Partially Correct 0.4-0.79, Incorrect < 0.4, Not Confirmed: 0.0 with a clear reason about missing evidence).
+1. Base the classification and all metric scores ONLY on the supplied transcript. Do not assume anything not in the transcript.
+2. The overall score must be a float between 0.0 and 1.0 (Correct >= 0.8, Partially Correct 0.4-0.79, Incorrect < 0.4, Not Confirmed: 0.0 with a clear reason about missing evidence). Make it consistent with the metric scores.
 3. The reason must be 1-2 sentences, factual, non-judgmental.
 4. missing_concepts: list of at most 4 short concept names the candidate failed to cover.
 5. If classification is "Partially Correct", set follow_up_required = true and provide 2-3 targeted follow-up questions that probe the missing concepts. Otherwise follow_up_required = false and follow_up_questions = [].
@@ -26,6 +37,7 @@ Return JSON in EXACTLY this shape:
   "score": 0.0,
   "reason": "short factual reason",
   "missing_concepts": ["Concept A", "Concept B"],
+  "metrics": [{{"name": "Accuracy", "score": 0.0, "note": "optional short note"}}],
   "follow_up_required": false,
   "follow_up_questions": []
 }}

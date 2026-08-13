@@ -22,6 +22,7 @@ from app.core.logging import get_logger
 from app.schemas.llm import (
     EvaluationResult,
     FollowUpBatch,
+    MetricScore,
     QuestionBatch,
     ReportSection,
 )
@@ -266,7 +267,7 @@ class LLMService:
         candidate_answer: str,
     ) -> EvaluationResult:
         if self.mock_mode:
-            return self._mock_evaluation(candidate_answer)
+            return self._mock_evaluation(candidate_answer, question)
         system = load_prompt("answer_evaluation.txt")
         user = system.format(
             question=question,
@@ -290,6 +291,8 @@ class LLMService:
             result.follow_up_questions = self.generate_followups(
                 question, topic, candidate_answer, result.reason, result.missing_concepts
             )
+        if not result.metrics:
+            result.metrics = self._fallback_metrics(result.score)
         return result
 
     def generate_followups(
@@ -409,7 +412,15 @@ class LLMService:
         return QuestionBatch.model_validate({"questions": questions})
 
     @staticmethod
-    def _mock_evaluation(candidate_answer: str) -> EvaluationResult:
+    def _fallback_metrics(score: float) -> list[MetricScore]:
+        return [
+            MetricScore(name="Accuracy", score=score),
+            MetricScore(name="Completeness", score=score),
+            MetricScore(name="Clarity", score=score),
+        ]
+
+    @staticmethod
+    def _mock_evaluation(candidate_answer: str, question: str = "") -> EvaluationResult:
         text = candidate_answer.lower()
         if any(word in text for word in ("not know", "no idea", "i don't know", "dont know", "unsure")):
             return EvaluationResult(
@@ -417,6 +428,11 @@ class LLMService:
                 score=0.0,
                 reason="[MOCK] The transcript does not provide enough evidence to evaluate the answer.",
                 missing_concepts=[],
+                metrics=[
+                    MetricScore(name="Accuracy", score=0.0, note="[MOCK] No evidence provided."),
+                    MetricScore(name="Completeness", score=0.0, note="[MOCK] No evidence provided."),
+                    MetricScore(name="Clarity", score=0.0, note="[MOCK] No evidence provided."),
+                ],
                 follow_up_required=False,
                 follow_up_questions=[],
             )
@@ -426,6 +442,12 @@ class LLMService:
                 score=0.55,
                 reason="[MOCK] The answer shows partial understanding but lacks important detail.",
                 missing_concepts=["Elaboration", "Examples", "Depth"],
+                metrics=[
+                    MetricScore(name="Accuracy", score=0.7),
+                    MetricScore(name="Completeness", score=0.4, note="[MOCK] Important detail missing."),
+                    MetricScore(name="Clarity", score=0.6),
+                    MetricScore(name="Depth", score=0.4, note="[MOCK] Lacks a concrete example."),
+                ],
                 follow_up_required=True,
                 follow_up_questions=[
                     "Can you elaborate with a concrete example?",
@@ -438,6 +460,12 @@ class LLMService:
             score=0.9,
             reason="[MOCK] The answer is complete and demonstrates a solid understanding.",
             missing_concepts=[],
+            metrics=[
+                MetricScore(name="Accuracy", score=0.9),
+                MetricScore(name="Completeness", score=0.9),
+                MetricScore(name="Clarity", score=0.9),
+                MetricScore(name="Depth", score=0.85),
+            ],
             follow_up_required=False,
             follow_up_questions=[],
         )

@@ -20,11 +20,20 @@ class QuestionBatch(BaseModel):
     questions: list[QuestionDraft] = Field(min_length=1)
 
 
+class MetricScore(BaseModel):
+    """Per-metric score used for question-type-aware evaluation."""
+
+    name: str = Field(min_length=1)
+    score: float = Field(ge=0.0, le=1.0)
+    note: str = Field(default="")
+
+
 class EvaluationResult(BaseModel):
     classification: Classification
     score: float = Field(ge=0.0, le=1.0)
     reason: str = Field(min_length=1)
     missing_concepts: list[str] = Field(default_factory=list)
+    metrics: list[MetricScore] = Field(default_factory=list)
     follow_up_required: bool = False
     follow_up_questions: list[str] = Field(default_factory=list)
 

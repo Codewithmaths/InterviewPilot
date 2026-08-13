@@ -4,6 +4,7 @@ import type {
   HistoryItem,
   InterviewReport,
   InterviewSummary,
+  MetricScore,
   Question,
 } from "@/types";
 
@@ -86,6 +87,7 @@ export const api = {
     score: number;
     reason: string;
     missing_concepts: string[];
+    metrics?: MetricScore[];
     follow_up_required: boolean;
     follow_up_questions: string[];
   }> {
@@ -102,6 +104,9 @@ export const api = {
   },
   repeatQuestion(id: number | string): Promise<Question> {
     return request(`/interviews/${id}/question/repeat`, { method: "POST" });
+  },
+  skipQuestion(id: number | string): Promise<Question> {
+    return request(`/interviews/${id}/question/skip`, { method: "POST" });
   },
   moveToQuestion(id: number | string, questionNumber: number): Promise<Question> {
     return request(`/interviews/${id}/question/${questionNumber}`, { method: "POST" });

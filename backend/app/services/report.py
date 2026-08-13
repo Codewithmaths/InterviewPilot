@@ -13,6 +13,7 @@ from app.models.entities import (
     Evaluation,
     FaceAnalysisEvent,
     Interview,
+    InterviewEvent,
     Question,
 )
 from app.schemas.interview import InterviewReport, QuestionReportItem
@@ -22,9 +23,10 @@ logger = get_logger(__name__)
 
 SCORING_METHODOLOGY = (
     "Answer-performance score = (Correct * 1.0 + Partially Correct * 0.5 + "
-    "Incorrect * 0.0) / evaluated main questions. 'Not Confirmed' answers are "
-    "excluded. This is an AI-assisted estimate, not an objective hiring score, "
-    "and must not be used as the sole basis for a hiring decision."
+    "Incorrect * 0.0) / evaluated main questions. 'Not Confirmed' answers and "
+    "skipped questions are excluded. This is an AI-assisted estimate, not an "
+    "objective hiring score, and must not be used as the sole basis for a "
+    "hiring decision."
 )
 
 
@@ -47,6 +49,7 @@ class ReportService:
 
         main_evaluations: list[dict] = []
         question_analysis: list[QuestionReportItem] = []
+        skipped_ids = self._skipped_question_ids(interview_id)
         for question in questions:
             main_answers: list[Answer] = (
                 self.db.query(Answer)
@@ -62,7 +65,9 @@ class ReportService:
                 if main_answers
                 else None
             )
-            classification = main_ev.classification if main_ev else "Not Answered"
+            classification = main_ev.classification if main_ev else (
+                "Skipped" if question.id in skipped_ids else "Not Answered"
+            )
             score = main_ev.score if main_ev else 0.0
             main_evaluations.append(
                 {
@@ -104,6 +109,7 @@ class ReportService:
                     classification=classification,
                     score=score,
                     reason=main_ev.reason if main_ev else "",
+                    metrics=main_ev.metric_scores or [] if main_ev else [],
                     follow_up_answers=followup_items,
                 )
             )
@@ -113,6 +119,7 @@ class ReportService:
             "Incorrect": 0,
             "Partially Correct": 0,
             "Not Confirmed": 0,
+            "Skipped": 0,
             "Not Answered": 0,
         }
         evaluated = 0
@@ -120,6 +127,8 @@ class ReportService:
             if item["has_eval"]:
                 counts[item["classification"]] = counts.get(item["classification"], 0) + 1
                 evaluated += 1
+            elif item["classification"] == "Skipped":
+                counts["Skipped"] += 1
             else:
                 counts["Not Answered"] += 1
 
@@ -165,6 +174,21 @@ class ReportService:
             generated_at=datetime.now(timezone.utc),
         )
         return report
+
+    # ------------------------------------------------------------------
+    def _skipped_question_ids(self, interview_id: int) -> set[int]:
+        events = (
+            self.db.query(InterviewEvent)
+            .filter(InterviewEvent.interview_id == interview_id)
+            .filter(InterviewEvent.event_type == "QUESTION_SKIPPED")
+            .all()
+        )
+        skipped: set[int] = set()
+        for event in events:
+            qid = (event.payload or {}).get("question_id")
+            if isinstance(qid, int):
+                skipped.add(qid)
+        return skipped
 
     # ------------------------------------------------------------------
     def _visual_summary(self, interview_id: int) -> dict[str, float]:

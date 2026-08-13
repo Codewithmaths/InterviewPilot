@@ -1,10 +1,11 @@
-import { ChevronLeft, ChevronRight, Flag, Repeat, Square } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, Repeat, SkipForward, Square } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
 export function InterviewControls({
   onPrevious,
   onRepeat,
+  onSkip,
   onNext,
   onEnd,
   busy,
@@ -12,6 +13,7 @@ export function InterviewControls({
 }: {
   onPrevious: () => void;
   onRepeat: () => void;
+  onSkip: () => void;
   onNext: () => void;
   onEnd: () => void;
   busy?: boolean;
@@ -24,6 +26,9 @@ export function InterviewControls({
       </Button>
       <Button variant="outline" size="sm" onClick={onRepeat} disabled={busy || !canNavigate}>
         <Repeat className="h-4 w-4" /> Repeat Question
+      </Button>
+      <Button variant="outline" size="sm" onClick={onSkip} disabled={busy || !canNavigate}>
+        <SkipForward className="h-4 w-4" /> Skip
       </Button>
       <Button variant="secondary" size="sm" onClick={onNext} disabled={busy || !canNavigate}>
         Next <ChevronRight className="h-4 w-4" />

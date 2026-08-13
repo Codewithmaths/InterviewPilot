@@ -68,6 +68,8 @@ export function classificationColor(classification: string): string {
       return "bg-amber-500/15 text-amber-400 border-amber-500/30";
     case "Not Confirmed":
       return "bg-slate-500/15 text-slate-400 border-slate-500/30";
+    case "Skipped":
+      return "bg-violet-500/15 text-violet-400 border-violet-500/30";
     default:
       return "bg-muted text-muted-foreground border-border";
   }

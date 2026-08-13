@@ -44,21 +44,38 @@ class FakeLLM:
         if self.classification == "Correct":
             return EvaluationResult(
                 classification="Correct", score=0.9, reason="Solid answer.",
-                missing_concepts=[], follow_up_required=False, follow_up_questions=[],
+                missing_concepts=[], metrics=[
+                    {"name": "Accuracy", "score": 0.9},
+                    {"name": "Completeness", "score": 0.9},
+                ],
+                follow_up_required=False, follow_up_questions=[],
             )
         if self.classification == "Incorrect":
             return EvaluationResult(
                 classification="Incorrect", score=0.2, reason="Misunderstood the concept.",
-                missing_concepts=["Core concept"], follow_up_required=False, follow_up_questions=[],
+                missing_concepts=["Core concept"], metrics=[
+                    {"name": "Accuracy", "score": 0.2},
+                    {"name": "Completeness", "score": 0.2},
+                ],
+                follow_up_required=False, follow_up_questions=[],
             )
         if self.classification == "Not Confirmed":
             return EvaluationResult(
                 classification="Not Confirmed", score=0.0, reason="Insufficient evidence.",
-                missing_concepts=[], follow_up_required=False, follow_up_questions=[],
+                missing_concepts=[], metrics=[
+                    {"name": "Accuracy", "score": 0.0},
+                    {"name": "Completeness", "score": 0.0},
+                ],
+                follow_up_required=False, follow_up_questions=[],
             )
         return EvaluationResult(
             classification="Partially Correct", score=0.55,
             reason="Partial understanding shown.", missing_concepts=["Concept A", "Concept B"],
+            metrics=[
+                {"name": "Accuracy", "score": 0.7},
+                {"name": "Completeness", "score": 0.4},
+                {"name": "Clarity", "score": 0.6},
+            ],
             follow_up_required=True,
             follow_up_questions=[
                 "Follow-up A?",

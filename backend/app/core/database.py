@@ -43,3 +43,23 @@ def init_db() -> None:
     from app.models import entities  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _migrate_sqlite()
+
+
+def _migrate_sqlite() -> None:
+    """Best-effort column additions for databases created by older versions.
+
+    create_all() never alters existing tables, so columns added to the models
+    later need an explicit ALTER TABLE. Safe to skip for non-SQLite backends.
+    """
+    if not DB_URL.startswith("sqlite"):
+        return
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "evaluations" not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns("evaluations")}
+    if "metric_scores" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE evaluations ADD COLUMN metric_scores JSON"))

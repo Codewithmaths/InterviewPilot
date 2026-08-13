@@ -282,6 +282,47 @@ class InterviewService:
             return None
         return self.move_to_question(interview_id, next_number)
 
+    def skip_question(self, interview_id: int) -> Question | None:
+        """Record the current question as skipped and advance to the next one.
+
+        Skipping is not an answer: it is logged as an event (so the report can
+        reflect it) but does not count toward total_questions_asked. If there
+        is no next question, nothing is recorded.
+        """
+        interview = self._get(interview_id)
+        _ensure_state(
+            interview,
+            {
+                InterviewState.RUNNING.value,
+                InterviewState.NEXT_QUESTION.value,
+                InterviewState.FOLLOW_UP.value,
+            },
+        )
+        next_number = (interview.current_question_index or 0) + 1
+        next_question = (
+            self.db.query(Question)
+            .filter(Question.interview_id == interview_id)
+            .filter(Question.question_number == next_number)
+            .first()
+        )
+        if next_question is None:
+            return None
+        if interview.current_question_id is not None:
+            current = self.db.get(Question, interview.current_question_id)
+            if current is not None and current.interview_id == interview_id:
+                self.db.add(
+                    InterviewEvent(
+                        interview_id=interview.id,
+                        event_type=WSEventType.QUESTION_SKIPPED.value,
+                        payload={
+                            "question_number": current.question_number,
+                            "question_id": current.id,
+                        },
+                    )
+                )
+                self.db.commit()
+        return self.move_to_question(interview_id, next_number)
+
     def repeat_question(self, interview_id: int) -> Question | None:
         interview = self._get(interview_id)
         _ensure_state(interview, {InterviewState.RUNNING.value})

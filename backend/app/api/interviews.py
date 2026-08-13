@@ -186,6 +186,26 @@ async def repeat_question(interview_id: int, db: Session = Depends(get_db)) -> Q
     return QuestionOut.model_validate(question)
 
 
+@router.post("/{interview_id}/question/skip", response_model=QuestionOut)
+async def skip_question(interview_id: int, db: Session = Depends(get_db)) -> QuestionOut:
+    service = InterviewService(db)
+    try:
+        question = await run_in_threadpool(service.skip_question, interview_id)
+    except StateTransitionError as exc:
+        raise _state_error(exc)
+    if question is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No more questions")
+    await manager.broadcast(
+        interview_id,
+        build_message(
+            WSEventType.QUESTION_CHANGED,
+            {"question_number": question.question_number, "question_id": question.id},
+            interview_id,
+        ),
+    )
+    return QuestionOut.model_validate(question)
+
+
 @router.post("/{interview_id}/question/{question_number}", response_model=QuestionOut)
 async def move_to_question(
     interview_id: int, question_number: int, db: Session = Depends(get_db)
@@ -241,6 +261,7 @@ async def create_answer(
         "score": payload["score"],
         "reason": payload["reason"],
         "missing_concepts": payload["missing_concepts"],
+        "metrics": payload["metrics"],
         "follow_up_required": payload["follow_up_required"],
         "follow_up_questions": payload["follow_up_questions"],
     }
@@ -317,6 +338,7 @@ async def answer_followup(
         "classification": result["payload"]["classification"],
         "score": result["payload"]["score"],
         "reason": result["payload"]["reason"],
+        "metrics": result["payload"]["metrics"],
     }
 
 

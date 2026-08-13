@@ -67,11 +67,18 @@ export interface Question {
   difficulty: string;
 }
 
+export interface MetricScore {
+  name: string;
+  score: number;
+  note?: string;
+}
+
 export interface Evaluation {
   classification: Classification;
   score: number;
   reason: string;
   missing_concepts: string[];
+  metrics?: MetricScore[];
   follow_up_required: boolean;
   follow_up_questions: string[];
 }
@@ -120,6 +127,7 @@ export interface QuestionReportItem {
   classification: string;
   score: number;
   reason: string;
+  metrics?: MetricScore[];
   follow_up_answers: Array<{ text: string; classification: string; score: number }>;
 }
 
@@ -199,6 +207,7 @@ export interface EvaluationCompletedPayload {
   score: number;
   reason: string;
   missing_concepts: string[];
+  metrics?: MetricScore[];
   follow_up_required: boolean;
   follow_up_questions: string[];
   followup_ids: number[];

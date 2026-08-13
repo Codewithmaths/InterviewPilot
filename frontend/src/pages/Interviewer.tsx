@@ -231,6 +231,19 @@ export default function InterviewerPage() {
     }
   }, [id, setCurrentQuestion, setLastEvaluation, setState, pushError]);
 
+  const handleSkip = useCallback(async () => {
+    if (!id) return;
+    try {
+      const q = await api.skipQuestion(id);
+      setCurrentQuestion(q);
+      setLastEvaluation(null);
+      setState("RUNNING" as never);
+      api.getFollowups(id).then(setPendingFollowups).catch(() => undefined);
+    } catch (err) {
+      pushError(err instanceof ApiError ? err.message : "Could not skip question");
+    }
+  }, [id, setCurrentQuestion, setLastEvaluation, setState, setPendingFollowups, pushError]);
+
   const handleRepeat = useCallback(async () => {
     if (!id) return;
     try {
@@ -428,6 +441,7 @@ export default function InterviewerPage() {
             <InterviewControls
               onPrevious={handlePrevious}
               onRepeat={handleRepeat}
+              onSkip={handleSkip}
               onNext={handleNext}
               onEnd={handleEnd}
               busy={isBusy || !started}

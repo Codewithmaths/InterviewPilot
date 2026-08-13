@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 InterviewType = Literal[
     "Technical",
@@ -94,6 +94,10 @@ class EvaluationOut(BaseModel):
     score: float
     reason: str
     missing_concepts: list[str]
+    metrics: list[dict] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("metrics", "metric_scores"),
+    )
     follow_up_required: bool
     follow_up_questions: list[str]
 
@@ -228,6 +232,7 @@ class QuestionReportItem(BaseModel):
     classification: str
     score: float
     reason: str
+    metrics: list[dict] = Field(default_factory=list)
     follow_up_answers: list[dict] = Field(default_factory=list)
 
 
