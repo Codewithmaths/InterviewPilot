@@ -1,0 +1,46 @@
+# Render Blueprint — free-tier deployment for InterviewPilot.
+#
+# Single web service: the FastAPI backend ALSO serves the built Vite frontend
+# (see backend/app/main.py spa_fallback), so there is one origin for REST, the
+# /ws WebSocket signaling, and the SPA — no CDN WebSocket-proxying issues.
+#
+# Deploy: push this repo to GitHub, then in Render:
+#   New -> Blueprint -> select repo -> apply render.yaml
+# Fill in the `sync: false` env vars in the Render dashboard (or env group).
+services:
+  - type: web
+    name: interviewpilot-api
+    runtime: python
+    plan: free
+    rootDir: .
+    pythonVersion: "3.12.10"
+    healthCheckPath: /api/health
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r backend/requirements.txt
+      cd frontend && npm ci && npm run build
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: STT_PROVIDER
+        value: groq
+      - key: GROQ_WHISPER_MODEL
+        value: whisper-large-v3-turbo
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: ML_MODEL_WARMUP
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+      # Public origin used for join links and CORS. Example:
+      #   https://interviewpilot.duckdns.org
+      # (set after attaching the custom domain; while testing use the
+      #  auto-generated *.onrender.com URL)
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      # Secrets (never commit) — paste in the Render dashboard / env group:
+      - key: DATABASE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false

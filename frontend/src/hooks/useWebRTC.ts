@@ -6,7 +6,23 @@ import type { Role } from "@/types";
 export type PeerStatus = "idle" | "connecting" | "connected" | "failed" | "disconnected";
 
 const RTC_CONFIG: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceServers: [
+    // Google STUN (public, unlimited) — works when both peers have public IPs.
+    { urls: "stun:stun.l.google.com:19302" },
+    // Cloudflare STUN — reliable fallback, free and unlimited.
+    { urls: "stun:stun.cloudflare.com:3478" },
+    // Free Open Relay TURN (Metered) — relays media through restrictive NATs /
+    // firewalls where UDP is blocked (TCP fallback on 443 looks like HTTPS).
+    {
+      urls: [
+        "turn:openrelay.metered.ca:80",
+        "turn:openrelay.metered.ca:443",
+        "turn:openrelay.metered.ca:443?transport=tcp",
+      ],
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+  ],
 };
 
 interface WebRTCController {
@@ -20,8 +36,8 @@ interface WebRTCController {
 /**
  * Real WebRTC peer connection with signaling relayed through the backend
  * WebSocket. The interviewer acts as the offerer; the candidate answers.
- * Host candidates work for local development; a TURN server is required for
- * production NAT traversal (see ARCHITECTURE.md).
+ * Host candidates work for local development; TURN is included so production
+ * calls survive restrictive NATs (see ARCHITECTURE.md).
  */
 export function useWebRTC(role: Role, ws: WsClient | null, localStream: MediaStream | null): WebRTCController {
   const peerRef = useRef<RTCPeerConnection | null>(null);

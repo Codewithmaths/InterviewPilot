@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     FACE_ANALYSIS_INTERVAL: float = 1.0
 
     # Speech-to-text
+    # "groq" uses the hosted Whisper API (free, no local model); "local" uses
+    # faster-whisper with the settings below. "groq" is the default so the app
+    # runs on small/free hosts (Render) without a heavy local model.
+    STT_PROVIDER: str = "groq"
+    GROQ_WHISPER_MODEL: str = "whisper-large-v3-turbo"
     WHISPER_MODEL: str = "base"
     WHISPER_DEVICE: str = "cpu"
     WHISPER_COMPUTE_TYPE: str = "int8"

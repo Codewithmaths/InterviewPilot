@@ -28,7 +28,7 @@ Never place `GROQ_API_KEY` in frontend environment variables or source code.
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The first transcription request may download the Whisper model. Database tables are initialized automatically on startup.
+Transcription uses the hosted Groq Whisper API by default (`STT_PROVIDER=groq`). To run faster-whisper locally instead, set `STT_PROVIDER=local` (the first request then downloads the Whisper model). Database tables are initialized automatically on startup.
 
 ## Frontend
 
@@ -51,7 +51,24 @@ npm run build
 
 - Use HTTPS so browsers permit camera/microphone access outside localhost.
 - Set `FRONTEND_URL` to the public frontend origin.
-- Configure a TURN server and pass its ICE credentials to `frontend/src/hooks/useWebRTC.ts`.
-- Add a migration tool (e.g. Alembic) and a shared WebSocket/signaling store such as Redis when running multiple API workers.
 - Add authentication and authorization before sharing interview links publicly.
 - Add a shared WebSocket/signaling backend such as Redis when running multiple API workers.
+
+## Free deployment (Render)
+
+`render.yaml` deploys everything as one free web service (FastAPI serves the built
+Vite frontend on the same origin, so REST, `/ws`, and the SPA share one host).
+
+1. Push this repo to GitHub.
+2. In Render: **New -> Blueprint** -> select the repo -> **Apply**. Pick the free plan.
+3. In the service's **Environment** tab set the secrets (never commit them):
+   - `DATABASE_URL` — your Supabase session-pooler connection string
+   - `GROQ_API_KEY`
+   - `FRONTEND_URL` — your public origin
+   - `CORS_ORIGINS` — the same public origin
+4. For camera/mic on a custom name, add `interviewpilot.duckdns.org` in
+   **Settings -> Custom Domains**, then point a DuckDNS `CNAME` record at your
+   `<service>.onrender.com` URL. Render provisions the TLS certificate.
+
+The Groq LLM + Whisper API, Supabase, and the Google/Cloudflare STUN + Open Relay
+TURN servers (in `frontend/src/hooks/useWebRTC.ts`) are all free tiers.
