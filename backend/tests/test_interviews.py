@@ -42,8 +42,8 @@ def test_create_retrieve_and_role_safe_questions(client, llm_factory):
     "payload",
     [
         {"candidate_name": "A", "candidate_email": "bad", "num_questions": 20},
-        {"candidate_name": "A", "candidate_email": "a@example.com", "num_questions": 19},
-        {"candidate_name": "A", "candidate_email": "a@example.com", "num_questions": 31},
+        {"candidate_name": "A", "candidate_email": "a@example.com", "num_questions": 9},
+        {"candidate_name": "A", "candidate_email": "a@example.com", "num_questions": 21},
     ],
 )
 def test_create_validation(client, llm_factory, payload):

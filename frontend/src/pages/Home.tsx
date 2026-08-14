@@ -32,7 +32,7 @@ function difficultyOptions() {
   return DIFFICULTIES.map((d) => ({ value: d, label: d }));
 }
 function countOptions() {
-  return Array.from({ length: 11 }, (_, i) => i + 20).map((n) => ({ value: String(n), label: `${n} questions` }));
+  return Array.from({ length: 11 }, (_, i) => i + 10).map((n) => ({ value: String(n), label: `${n} questions` }));
 }
 
 export default function HomePage() {
@@ -96,7 +96,7 @@ export default function HomePage() {
           <CardHeader className="flex-row items-start justify-between gap-4">
             <div>
               <CardTitle>Create Interview</CardTitle>
-              <CardDescription>Generate 20–30 LLM questions and generate a join link.</CardDescription>
+              <CardDescription>Generate 10–20 LLM questions and generate a join link.</CardDescription>
             </div>
             <Button variant="outline" size="sm" onClick={() => setShowRecent((visible) => !visible)}>
               <History className="h-4 w-4" />

@@ -31,7 +31,7 @@ class InterviewCreate(BaseModel):
     candidate_email: EmailStr
     interview_type: InterviewType = "Technical"
     difficulty: Difficulty = "Medium"
-    num_questions: int = Field(20, ge=20, le=30)
+    num_questions: int = Field(20, ge=10, le=20)
     job_description: str | None = Field(None, max_length=10000)
 
 
