@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Check, Copy, Loader2, PlayCircle, Video } from "lucide-react";
 
 import { api, ApiError } from "@/lib/api";
@@ -148,6 +148,8 @@ export default function InterviewerPage() {
     const onEnded = ws.on("INTERVIEW_ENDED", () => {
       setState("COMPLETED" as never);
       setStarted(false);
+      rtc.hangup();
+      media.stop();
     });
     const onError = ws.on("ERROR", (m) => {
       pushError(String(m.payload?.message ?? "Server error"));
@@ -278,10 +280,13 @@ export default function InterviewerPage() {
       const iv = await api.endInterview(id);
       setInterview(iv);
       setState("COMPLETED" as never);
+      setStarted(false);
+      rtc.hangup();
+      media.stop();
     } catch (err) {
       pushError(err instanceof ApiError ? err.message : "Could not end interview");
     }
-  }, [id, setInterview, setState, pushError]);
+  }, [id, media, rtc, setInterview, setState, pushError]);
 
   const handleSelectFollowup = useCallback(
     async (followupId: number) => {
@@ -335,7 +340,19 @@ export default function InterviewerPage() {
           </div>
         )}
 
-        {!started && (
+        {state === "COMPLETED" && (
+          <Alert className="mb-4">
+            <AlertTitle className="text-emerald-400">Interview completed</AlertTitle>
+            <AlertDescription className="flex flex-wrap items-center gap-2">
+              The interview has ended and the candidate has been notified.
+              <Button asChild size="sm" variant="outline">
+                <Link to={`/report/${id}`}>View Report</Link>
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {!started && state !== "COMPLETED" && (
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -449,8 +466,8 @@ export default function InterviewerPage() {
               onSkip={handleSkip}
               onNext={handleNext}
               onEnd={handleEnd}
-              busy={isBusy || !started}
-              canNavigate={started}
+              busy={isBusy || !started || state === "COMPLETED"}
+              canNavigate={started && state !== "COMPLETED"}
             />
             <InterviewHistory items={history} />
           </div>

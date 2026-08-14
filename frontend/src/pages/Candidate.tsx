@@ -135,6 +135,8 @@ export default function CandidatePage() {
     const onEnded = ws.on("INTERVIEW_ENDED", () => {
       setState("COMPLETED" as never);
       setPipelineStatus("idle");
+      rtc.hangup();
+      media.stop();
     });
     const onError = ws.on("ERROR", (m) => pushError(String(m.payload?.message ?? "Server error")));
 
