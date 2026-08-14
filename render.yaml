@@ -13,7 +13,6 @@ services:
     runtime: python
     plan: free
     rootDir: .
-    pythonVersion: "3.12.10"
     healthCheckPath: /api/health
     buildCommand: |
       pip install --upgrade pip
@@ -21,6 +20,9 @@ services:
       cd frontend && npm ci && npm run build
     startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
+      # Pin Python 3.12 (required by the mediapipe/opencv wheels)
+      - key: PYTHON_VERSION
+        value: "3.12.10"
       - key: STT_PROVIDER
         value: groq
       - key: GROQ_WHISPER_MODEL
