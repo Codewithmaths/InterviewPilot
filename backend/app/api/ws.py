@@ -78,7 +78,7 @@ async def _handle_message(ws: WebSocket, interview_id: int, role: str, raw: dict
                 role,
                 build_message(
                     WSEventType.SIGNAL,
-                    {"from_role": role, "kind": kind, "payload": payload},
+                    {**payload, "from_role": role},
                     interview_id,
                     role,
                 ),
