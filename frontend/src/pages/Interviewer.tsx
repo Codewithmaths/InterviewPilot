@@ -67,6 +67,12 @@ export default function InterviewerPage() {
 
   const isBusy = state === "TRANSCRIBING" || state === "EVALUATING" || state === "WAITING_FOR_ANSWER";
 
+  // Build the candidate link from the current origin (single-origin deploy),
+  // so it is correct even if FRONTEND_URL is missing on the server.
+  const joinUrl = interview
+    ? `${window.location.origin}/candidate/${interview.id}/${interview.room_code}`
+    : null;
+
   useEffect(() => {
     idRef.current = id;
   }, [id]);
@@ -192,17 +198,16 @@ export default function InterviewerPage() {
   }, []);
 
   const handleCopyLink = useCallback(async () => {
-    const url = interview?.join_url;
-    if (!url) return;
+    if (!joinUrl) return;
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(joinUrl);
       setLinkCopied(true);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       copyTimerRef.current = setTimeout(() => setLinkCopied(false), 2000);
     } catch {
       pushError("Could not copy the link automatically. Please copy it manually.");
     }
-  }, [interview?.join_url, pushError]);
+  }, [joinUrl, pushError]);
 
   const handleStart = useCallback(async () => {
     if (!id) return;
@@ -348,14 +353,14 @@ export default function InterviewerPage() {
               </p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 break-all rounded-md bg-secondary/50 p-3 text-xs">
-                  {interview?.join_url}
+                  {joinUrl}
                 </code>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={handleCopyLink}
-                  disabled={!interview?.join_url}
+                  disabled={!joinUrl}
                 >
                   {linkCopied ? (
                     <Check className="h-4 w-4 text-emerald-400" />

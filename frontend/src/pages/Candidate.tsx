@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Loader2, Mic, Square, Video } from "lucide-react";
 
+import type { Question } from "@/types";
 import { api, ApiError, transcribeAudio } from "@/lib/api";
 import { WsClient } from "@/lib/ws";
 import { useMedia } from "@/hooks/useMedia";
@@ -52,6 +53,7 @@ export default function CandidatePage() {
   const [currentFollowupId, setCurrentFollowupId] = useState<number | null>(null);
   const [currentFollowupText, setCurrentFollowupText] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [transcriptionFailed, setTranscriptionFailed] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const currentQidRef = useRef<number | null>(null);
@@ -205,21 +207,67 @@ export default function CandidatePage() {
     setPipelineStatus("recording");
   }, [interview, currentQuestion, currentFollowupId, media.stream, recorder, setPipelineStatus, setTranscript, pushError]);
 
+  const failTranscription = useCallback(
+    (message: string) => {
+      pushError(message);
+      setPipelineStatus("idle");
+      setTranscriptionFailed(true);
+    },
+    [pushError, setPipelineStatus],
+  );
+
+  const handleRetryAnswer = useCallback(() => {
+    setTranscriptionFailed(false);
+    setPipelineStatus("idle");
+    setTranscript("");
+  }, [setPipelineStatus, setTranscript]);
+
+  const handleSkipFailedQuestion = useCallback(async () => {
+    if (!interview) return;
+    try {
+      // Unblock the state machine first: it is stuck in TRANSCRIBING /
+      // WAITING_FOR_ANSWER because the failure happened after the
+      // TRANSCRIPTION_STARTED event was broadcast.
+      await api.setState(interview.id, "RUNNING").catch(() => undefined);
+      let next: Question | null = null;
+      try {
+        next = await api.skipQuestion(interview.id);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          await api.endInterview(interview.id);
+          setState("COMPLETED");
+          setPipelineStatus("idle");
+          setTranscript("");
+          setTranscriptionFailed(false);
+          return;
+        }
+        throw err;
+      }
+      setCurrentQuestion(next);
+      setCurrentFollowupId(null);
+      setCurrentFollowupText(null);
+      setState("RUNNING");
+      setPipelineStatus("idle");
+      setTranscript("");
+      setTranscriptionFailed(false);
+    } catch (err) {
+      pushError(err instanceof ApiError ? err.message : "Could not skip the question. Please try again.");
+    }
+  }, [interview, setCurrentQuestion, setState, setPipelineStatus, setTranscript, pushError]);
+
   const handleStopAnswer = useCallback(async () => {
     if (!interview) return;
     recordingRef.current = false;
     wsRef.current?.send("ANSWER_STOPPED", {});
     const result = await recorder.stop();
     if (!result || result.blob.size === 0) {
-      pushError("No audio captured. Please try again.");
-      setPipelineStatus("idle");
+      failTranscription("No audio captured. Please try again or skip this question.");
       return;
     }
     if (result.blob.size < 1000 || (await isSilentAudio(result.blob))) {
-      pushError(
-        "The recording captured no audio. Check that your microphone is not muted and the correct input device is selected, then try again.",
+      failTranscription(
+        "The recording captured no audio. Check that your microphone is not muted and the correct input device is selected, then try again or skip this question.",
       );
-      setPipelineStatus("idle");
       return;
     }
     setPipelineStatus("transcribing");
@@ -227,8 +275,7 @@ export default function CandidatePage() {
     try {
       const { text } = await transcribeAudio(result.blob);
       if (!text.trim()) {
-        pushError("No speech detected. Please try again.");
-        setPipelineStatus("idle");
+        failTranscription("No speech detected. Please try again or skip this question.");
         return;
       }
       setTranscript(text);
@@ -247,10 +294,9 @@ export default function CandidatePage() {
         });
       }
     } catch (err) {
-      pushError(err instanceof ApiError ? err.message : "Transcription or evaluation failed");
-      setPipelineStatus("idle");
+      failTranscription(err instanceof ApiError ? err.message : "Transcription or evaluation failed");
     }
-  }, [interview, currentQuestion, currentFollowupId, recorder, setPipelineStatus, setTranscript, pushError]);
+  }, [interview, currentQuestion, currentFollowupId, recorder, setPipelineStatus, setTranscript, failTranscription]);
 
   if (loading) {
     return (
@@ -281,20 +327,39 @@ export default function CandidatePage() {
         {!joined ? (
           <div className="mx-auto max-w-xl space-y-4">
             <PrivacyNotice />
-            <Card>
-              <CardHeader>
-                <CardTitle>Welcome, {interview?.candidate_name}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  You are joining a <span className="font-medium text-foreground">{interview?.interview_type}</span>{" "}
-                  interview ({interview?.difficulty} · {interview?.num_questions} questions).
-                </p>
-                <Button onClick={handleJoin} size="lg" className="w-full">
-                  <Mic className="h-4 w-4" /> Grant Camera &amp; Microphone Permission
-                </Button>
-              </CardContent>
-            </Card>
+            {errors.length > 0 && (
+              <div className="space-y-2">
+                {errors.map((e) => (
+                  <Alert key={e.id} variant="destructive">
+                    <AlertTitle>Notice</AlertTitle>
+                    <AlertDescription>{e.message}</AlertDescription>
+                  </Alert>
+                ))}
+              </div>
+            )}
+            {interview ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Welcome, {interview.candidate_name}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    You are joining a <span className="font-medium text-foreground">{interview.interview_type}</span>{" "}
+                    interview ({interview.difficulty} · {interview.num_questions} questions).
+                  </p>
+                  <Button onClick={handleJoin} size="lg" className="w-full">
+                    <Mic className="h-4 w-4" /> Grant Camera &amp; Microphone Permission
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">
+                  This interview could not be loaded. Check that the link is correct, or ask the
+                  interviewer to resend it.
+                </CardContent>
+              </Card>
+            )}
           </div>
         ) : (
           <div className="grid gap-6 lg:grid-cols-2">
@@ -345,6 +410,36 @@ export default function CandidatePage() {
                     </Alert>
                   ))}
                 </div>
+              )}
+
+              {transcriptionFailed && (
+                <Alert variant="destructive">
+                  <AlertTitle>Your answer could not be processed</AlertTitle>
+                  <AlertDescription>
+                    <p className="mb-3">
+                      Something went wrong while transcribing or evaluating your answer. You can try
+                      again or move on to the next question.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRetryAnswer}
+                        disabled={pipelineStatus !== "idle" || recorder.recording}
+                      >
+                        Try again
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleSkipFailedQuestion}
+                        disabled={recorder.recording}
+                      >
+                        Skip this question
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
               )}
 
               <QuestionCard

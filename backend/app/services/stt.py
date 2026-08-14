@@ -29,7 +29,7 @@ class SpeechToTextService:
 
         self.settings = settings or get_settings()
         self._model = None
-        self._groq_client = None
+        self._groq = None
         self._lock = threading.Lock()
         self._load_error: str | None = None
 
@@ -86,10 +86,10 @@ class SpeechToTextService:
 
     # ------------------------------------------------------------------
     def _transcribe_groq(self, audio_bytes: bytes, suffix: str) -> dict:
-        client = self._groq_client()
         last_error: Exception | None = None
         for attempt in range(3):
             try:
+                client = self._groq_client()
                 transcription = client.audio.transcriptions.create(
                     model=self.settings.GROQ_WHISPER_MODEL,
                     file=(f"audio{suffix}", audio_bytes),
@@ -99,8 +99,12 @@ class SpeechToTextService:
                 if not text:
                     raise SpeechToTextError("No speech detected in the audio (silence).")
                 duration = None
-                if getattr(transcription, "segments", None):
-                    duration = transcription.segments[-1].end
+                segments = getattr(transcription, "segments", None)
+                if segments:
+                    last = segments[-1]
+                    duration = (
+                        last.get("end") if isinstance(last, dict) else getattr(last, "end", None)
+                    )
                 return {
                     "text": text,
                     "language": getattr(transcription, "language", None),
@@ -125,19 +129,19 @@ class SpeechToTextService:
         raise SpeechToTextError(f"Transcription failed: {last_error}") from last_error
 
     def _groq_client(self):
-        if self._groq_client is not None:
-            return self._groq_client
+        if self._groq is not None:
+            return self._groq
         with self._lock:
-            if self._groq_client is not None:
-                return self._groq_client
+            if self._groq is not None:
+                return self._groq
             from groq import Groq
 
             if not self.settings.GROQ_API_KEY:
                 raise SpeechToTextError(
                     "GROQ_API_KEY is required when STT_PROVIDER=groq."
                 )
-            self._groq_client = Groq(api_key=self.settings.GROQ_API_KEY)
-        return self._groq_client
+            self._groq = Groq(api_key=self.settings.GROQ_API_KEY)
+        return self._groq
 
     # ------------------------------------------------------------------
     def _transcribe_local(self, audio_bytes: bytes, suffix: str) -> dict:
