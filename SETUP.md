@@ -6,7 +6,8 @@ Copy `.env.example` to `.env` in the project root. Required values:
 
 ```text
 GROQ_API_KEY=...
-GROQ_MODEL=llama-3.3-70b-versatile
+<!-- GROQ_MODEL=openai/gpt-oss-120b -->
+GROQ_MODEL=openai/gpt-oss-120b
 DATABASE_URL=postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
 BACKEND_HOST=127.0.0.1
 BACKEND_PORT=8000
