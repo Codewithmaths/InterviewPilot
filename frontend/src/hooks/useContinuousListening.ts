@@ -90,7 +90,12 @@ export function useContinuousListening({
   // tabs, unlike requestAnimationFrame which freezes — that freeze caused
   // "stuck at listening" whenever the candidate looked away from the tab.
   const TICK_MS = 50;
-  const SPEECH_FRAMES_NEEDED = Math.ceil(REAL_BURST_MS / TICK_MS); // ~200ms to START speech
+  // Onset detection uses a SLIDING WINDOW instead of a consecutive streak:
+  // natural speech contains micro-pauses, and a single quiet tick used to
+  // reset a consecutive-streak counter forever — leaving the UI stuck on
+  // "Waiting for speech…" even while the candidate was talking.
+  const ONSET_WINDOW_TICKS = Math.ceil(300 / TICK_MS); // look back ~300ms
+  const ONSET_LOUD_NEEDED = Math.ceil(ONSET_WINDOW_TICKS * 0.6); // >=60% loud
   // Safety cap: never record a single utterance longer than this.
   const MAX_UTTERANCE_MS = 45_000;
 
@@ -317,7 +322,7 @@ export function useContinuousListening({
     let noiseSum = 0;
     let threshold = MIN_THRESHOLD * 2;
 
-    let loudStreak = 0;          // consecutive above-threshold ticks
+    let loudWindow: boolean[] = [];  // sliding window of recent above-threshold ticks
     let recording = false;       // recorder active for current utterance
     let utteranceStart = 0;      // when recording started
     let speechMs = 0;            // total confirmed-speech time this utterance
@@ -330,7 +335,7 @@ export function useContinuousListening({
       const totalSpeech = speechMs;
       recording = false;
       speechActiveRef.current = false;
-      loudStreak = 0;
+      loudWindow = [];
       burstMs = 0;
       quietMs = 0;
       log("ending utterance:", reason, { speechMs: totalSpeech });
@@ -345,6 +350,11 @@ export function useContinuousListening({
 
       let energy = 0;
       try {
+        // Chrome can suspend the context (background tab, device switch);
+        // silent frames would otherwise stall the VAD forever.
+        if (audioCtxRef.current.state === "suspended") {
+          void audioCtxRef.current.resume().catch(() => undefined);
+        }
         analyserRef.current.getFloatTimeDomainData(dataArray);
         energy = rms(dataArray);
       } catch (err) {
@@ -365,8 +375,11 @@ export function useContinuousListening({
       }
 
       const loud = energy > threshold;
-      loudStreak = loud ? loudStreak + 1 : 0;
-      const speechConfirmed = loudStreak >= SPEECH_FRAMES_NEEDED;
+      loudWindow.push(loud);
+      if (loudWindow.length > ONSET_WINDOW_TICKS) loudWindow.shift();
+      let loudCount = 0;
+      for (const v of loudWindow) if (v) loudCount += 1;
+      const speechConfirmed = loudCount >= ONSET_LOUD_NEEDED;
 
       if (speechConfirmed) {
         if (!speechActiveRef.current) {

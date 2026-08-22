@@ -251,6 +251,8 @@ async def create_answer(
         )
     except LLMError as exc:
         raise _llm_error(exc) from exc
+    except StateTransitionError as exc:
+        raise _state_error(exc)
     payload = result["payload"]
     await manager.broadcast(
         interview_id, build_message(WSEventType.EVALUATION_COMPLETED, payload, interview_id)
@@ -329,6 +331,8 @@ async def answer_followup(
         )
     except LLMError as exc:
         raise _llm_error(exc) from exc
+    except StateTransitionError as exc:
+        raise _state_error(exc)
     await manager.broadcast(
         interview_id,
         build_message(WSEventType.EVALUATION_COMPLETED, result["payload"], interview_id),
