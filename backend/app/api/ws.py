@@ -54,6 +54,37 @@ async def ws_endpoint(ws: WebSocket, interview_id: int) -> None:
         logger.warning("WS error for %s: %s", cid, exc)
     finally:
         await manager.disconnect(interview_id, role, cid)
+        if role == "candidate":
+            await _release_answer_lock(interview_id)
+
+
+async def _release_answer_lock(interview_id: int) -> None:
+    """Return to RUNNING if the candidate dropped mid-answer, so interviewer
+    navigation is never permanently locked by a stale answer phase."""
+    from app.models.entities import InterviewState
+    from app.services.interview import InterviewService
+
+    db: Session = next(get_db())
+    try:
+        interview = db.get(Interview, interview_id)
+        if interview is not None and interview.status in (
+            InterviewState.WAITING_FOR_ANSWER.value,
+            InterviewState.TRANSCRIBING.value,
+        ):
+            prev = interview.status
+            InterviewService(db).transition_to(interview, InterviewState.RUNNING.value)
+            await manager.broadcast(
+                interview_id,
+                build_message(
+                    WSEventType.STATE_CHANGED,
+                    {"to": InterviewState.RUNNING.value, "from": prev},
+                    interview_id,
+                ),
+            )
+    except Exception as exc:
+        logger.debug("Could not release answer lock for interview %s: %s", interview_id, exc)
+    finally:
+        db.close()
 
 
 async def _handle_message(ws: WebSocket, interview_id: int, role: str, raw: dict[str, Any]) -> None:
@@ -91,7 +122,9 @@ async def _handle_message(ws: WebSocket, interview_id: int, role: str, raw: dict
     # the event to both consoles so the live UX stays in sync.
     state_events = {
         "ANSWER_STARTED": "WAITING_FOR_ANSWER",
-        "ANSWER_STOPPED": None,
+        # Recording stopped: release the answer lock. If a transcript follows,
+        # TRANSCRIPTION_STARTED/EVALUATING re-lock immediately.
+        "ANSWER_STOPPED": "RUNNING",
         "TRANSCRIPTION_STARTED": "TRANSCRIBING",
     }
     if event_type in state_events:

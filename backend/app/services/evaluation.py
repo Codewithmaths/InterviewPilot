@@ -43,6 +43,21 @@ class EvaluationService:
         if question is None or question.interview_id != interview_id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Question not found")
 
+        # A correctly-answered question is locked: trailing speech or a second
+        # attempt must NOT create another recorded answer for it.
+        latest = (
+            self.db.query(Answer, Evaluation)
+            .join(Evaluation, Evaluation.answer_id == Answer.id)
+            .filter(Answer.question_id == question_id, Answer.is_followup.is_(False))
+            .order_by(Answer.created_at.desc())
+            .first()
+        )
+        if latest is not None and latest[1].classification == "Correct":
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This question was already answered correctly; further answers are not recorded.",
+            )
+
         self._transition(interview, InterviewState.EVALUATING.value)
 
         answer = Answer(

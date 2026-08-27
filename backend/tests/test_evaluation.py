@@ -157,6 +157,62 @@ def test_next_question_allowed_while_followups_pending(client, llm_factory):
     assert nxt.status_code == 200, nxt.text
 
 
+def test_correct_answer_locks_question_against_duplicates(client, llm_factory):
+    """A 'Correct' evaluation locks the question: later speech for the same
+    question is rejected instead of being recorded as a second answer.
+    Non-correct answers stay retakeable."""
+    llm_factory(FakeLLM(classification="Correct"))
+    created = client.post(
+        "/api/interviews",
+        json={
+            "candidate_name": "Lock Candidate",
+            "candidate_email": "lock@example.com",
+            "interview_type": "Python",
+            "difficulty": "Medium",
+            "num_questions": 20,
+        },
+    ).json()
+    interview_id = created["id"]
+    assert client.post(f"/api/interviews/{interview_id}/start").status_code == 200
+    question = client.get(f"/api/interviews/{interview_id}/questions").json()[0]
+
+    payload = {"question_id": question["id"], "transcript": "A complete answer.", "duration_seconds": 25}
+    first = client.post(f"/api/interviews/{interview_id}/answers", json=payload)
+    assert first.status_code == 200, first.text
+    assert first.json()["classification"] == "Correct"
+
+    duplicate = client.post(f"/api/interviews/{interview_id}/answers", json=payload)
+    assert duplicate.status_code == 409, duplicate.text
+
+    history = client.get(f"/api/interviews/{interview_id}/history").json()["items"]
+    main_answers = [a for item in history if not item["is_followup"] for a in item["answers"]]
+    assert len(main_answers) == 1
+
+
+def test_non_correct_answer_can_be_retaken(client, llm_factory):
+    """Incorrect/partial answers do not lock the question (retake allowed)."""
+    llm_factory(FakeLLM(classification="Incorrect"))
+    created = client.post(
+        "/api/interviews",
+        json={
+            "candidate_name": "Retake Candidate",
+            "candidate_email": "retake@example.com",
+            "interview_type": "Python",
+            "difficulty": "Medium",
+            "num_questions": 20,
+        },
+    ).json()
+    interview_id = created["id"]
+    assert client.post(f"/api/interviews/{interview_id}/start").status_code == 200
+    question = client.get(f"/api/interviews/{interview_id}/questions").json()[0]
+
+    payload = {"question_id": question["id"], "transcript": "A wrong answer."}
+    first = client.post(f"/api/interviews/{interview_id}/answers", json=payload)
+    assert first.status_code == 200, first.text
+    second = client.post(f"/api/interviews/{interview_id}/answers", json=payload)
+    assert second.status_code == 200, second.text
+
+
 def test_all_allowed_classifications_are_schema_valid():
     from app.schemas.llm import EvaluationResult
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { api, transcribeAudio } from "@/lib/api";
+import { api, ApiError, transcribeAudio } from "@/lib/api";
 import type { WsClient } from "@/lib/ws";
 
 export type ListeningStatus = "idle" | "listening" | "transcribing" | "evaluating";
@@ -220,9 +220,17 @@ export function useContinuousListening({
           log("no active question/followup — dropping answer");
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log("submit failed:", msg);
-        onErrorRef.current?.(`Could not submit your answer: ${msg}`);
+        // Release the backend's WAITING_FOR_ANSWER lock — the pipeline ended
+        // without a recorded evaluation, so navigation must re-enable.
+        wsRef.current?.send("ANSWER_STOPPED", {});
+        if (err instanceof ApiError && err.status === 409) {
+          // Question already answered correctly: drop trailing speech quietly.
+          log("answer not recorded:", err.message);
+        } else {
+          const msg = err instanceof Error ? err.message : String(err);
+          log("submit failed:", msg);
+          onErrorRef.current?.(`Could not submit your answer: ${msg}`);
+        }
       } finally {
         isSubmittingRef.current = false;
         setTranscript("");
@@ -241,6 +249,9 @@ export function useContinuousListening({
     // Too little real speech (coughs, bumps) — discard silently, keep listening.
     if (!result || result.blob.size < 500 || speechMs < MIN_SPEECH_MS) {
       log("utterance discarded", { bytes: result?.blob.size ?? 0, speechMs });
+      // Release the backend's WAITING_FOR_ANSWER lock so interviewer
+      // navigation isn't blocked by a discarded non-answer.
+      wsRef.current?.send("ANSWER_STOPPED", {});
       updateStatus("idle");
       return;
     }

@@ -135,6 +135,15 @@ export default function InterviewerPage() {
       const num = m.payload?.question_number as number;
       setCurrentQuestion(questionsRef.current.find((q) => q.question_number === num) ?? null);
     });
+    // Mirror the candidate's answer pipeline so Next/Skip lock immediately
+    // while an answer is being captured or transcribed.
+    const onAnswerStarted = ws.on("ANSWER_STARTED", () => setState("WAITING_FOR_ANSWER" as never));
+    const onTranscribing = ws.on("TRANSCRIPTION_STARTED", () => setState("TRANSCRIBING" as never));
+    const onAnswerStopped = ws.on("ANSWER_STOPPED", () => {
+      // Pipeline aborted (discarded utterance / duplicate rejected / error):
+      // resync with the authoritative backend state.
+      api.getState(id).then((s) => setState(s.state as never)).catch(() => undefined);
+    });
     const onEval = ws.on("EVALUATION_COMPLETED", (m) => {
       setLastEvaluation(m.payload as unknown as EvaluationCompletedPayload);
       setState("NEXT_QUESTION" as never);
@@ -163,6 +172,9 @@ export default function InterviewerPage() {
       onState();
       onStarted();
       onQuestion();
+      onAnswerStarted();
+      onTranscribing();
+      onAnswerStopped();
       onEval();
       onFace();
       onEnded();

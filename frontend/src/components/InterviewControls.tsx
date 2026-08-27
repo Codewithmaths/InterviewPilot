@@ -38,7 +38,7 @@ export function InterviewControls({
       </Button>
       <span className="hidden text-xs text-muted-foreground lg:inline">
         <Flag className="mr-1 inline h-3 w-3" />
-        Controls are disabled while an answer is being evaluated.
+        Controls are locked while the candidate is answering or being evaluated.
       </span>
     </div>
   );

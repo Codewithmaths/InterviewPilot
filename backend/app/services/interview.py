@@ -235,13 +235,14 @@ class InterviewService:
     # ------------------------------------------------------------------
     def move_to_question(self, interview_id: int, question_number: int) -> Question:
         interview = self._get(interview_id)
+        # Navigation is rejected during an answer phase (WAITING_FOR_ANSWER,
+        # TRANSCRIBING, EVALUATING) so the question can't change mid-answer.
         _ensure_state(
             interview,
             {
                 InterviewState.RUNNING.value,
                 InterviewState.NEXT_QUESTION.value,
                 InterviewState.FOLLOW_UP.value,
-                InterviewState.WAITING_FOR_ANSWER.value,
             },
         )
         question = (
