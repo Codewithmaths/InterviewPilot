@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Loader2, Mic, Square, Video } from "lucide-react";
+import { Loader2, Mic, Send, Video } from "lucide-react";
 
-import type { Question } from "@/types";
-import { api, ApiError, transcribeAudio } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { WsClient } from "@/lib/ws";
 import { useMedia } from "@/hooks/useMedia";
 import { useWebRTC } from "@/hooks/useWebRTC";
-import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import { useContinuousListening } from "@/hooks/useContinuousListening";
 import { useFaceSampler } from "@/hooks/useFaceSampler";
 import { useInterviewStore } from "@/store/useInterviewStore";
-import { formatDuration, isSilentAudio } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -34,9 +32,7 @@ export default function CandidatePage() {
     setCurrentQuestion,
     setState,
     state,
-    pipelineStatus,
     setPipelineStatus,
-    transcript,
     setTranscript,
     setWsStatus,
     wsStatus,
@@ -52,24 +48,38 @@ export default function CandidatePage() {
   const [wsClient, setWsClient] = useState<WsClient | null>(null);
   const [currentFollowupId, setCurrentFollowupId] = useState<number | null>(null);
   const [currentFollowupText, setCurrentFollowupText] = useState<string | null>(null);
-  const [elapsed, setElapsed] = useState(0);
-  const [transcriptionFailed, setTranscriptionFailed] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [textInput, setTextInput] = useState("");
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const currentQidRef = useRef<number | null>(null);
-  const currentFupRef = useRef<number | null>(null);
   const wsRef = useRef<WsClient | null>(null);
-  const recordingRef = useRef(false);
   const questionsRef = useRef(questions);
 
   const media = useMedia();
   const rtc = useWebRTC("candidate", wsClient, media.stream);
-  const recorder = useAudioRecorder(media.stream);
   const { lastResult } = useFaceSampler(localVideoRef, interview?.id ?? null, {
     intervalMs: 1000,
     active: joined && !!interview && state !== "COMPLETED",
   });
-  void lastResult; // candidate never sees face-analysis output
+  void lastResult;
+
+  const activeQuestionId = currentFollowupId ? null : (currentQuestion?.id ?? null);
+  const activeFollowupId = currentFollowupId;
+
+  const { status: listenStatus, transcript: liveTranscript } =
+    useContinuousListening({
+      stream: media.stream,
+      interviewId: interview?.id ?? 0,
+      questionId: activeQuestionId,
+      followupId: activeFollowupId,
+      wsClient: wsClient,
+      enabled: joined && !!interview && state !== "COMPLETED" && !!currentQuestion && !textInput.trim(),
+      onTranscript: (text) => setTranscript(text),
+      onStatusChange: (s) => {
+        if (s === "transcribing") setPipelineStatus("transcribing");
+        else if (s === "evaluating") setPipelineStatus("evaluating");
+        else setPipelineStatus("idle");
+      },
+      onError: (message) => pushError(message),
+    });
 
   useEffect(() => {
     questionsRef.current = questions;
@@ -124,9 +134,6 @@ export default function CandidatePage() {
       const text = m.payload?.text as string;
       setCurrentFollowupId(fupId);
       setCurrentFollowupText(text);
-      currentFupRef.current = fupId;
-      currentQidRef.current = null;
-      setState("WAITING_FOR_ANSWER" as never);
     });
     const onEvalDone = ws.on("EVALUATION_COMPLETED", () => {
       setPipelineStatus("idle");
@@ -162,20 +169,6 @@ export default function CandidatePage() {
     if (el && media.stream && el.srcObject !== media.stream) el.srcObject = media.stream;
   }, [media.stream]);
 
-  // Answer timer
-  useEffect(() => {
-    if (recorder.recording) {
-      const start = Date.now();
-      timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [recorder.recording]);
-
   const handleJoin = useCallback(async () => {
     const granted = await media.requestMedia();
     if (granted) {
@@ -188,117 +181,28 @@ export default function CandidatePage() {
     }
   }, [media, clearErrors, pushError]);
 
-  const handleStartAnswer = useCallback(() => {
-    if (!interview || !currentQuestion) return;
-    if (!media.stream?.getAudioTracks().length) {
-      pushError("No microphone available. Check your microphone permission.");
-      return;
-    }
-    if (!recorder.start()) {
-      pushError(recorder.error ?? "Could not start recording. Check microphone permissions.");
-      return;
-    }
-    wsRef.current?.send("ANSWER_STARTED", {
-      question_id: currentFollowupId ? undefined : currentQuestion.id,
-      followup_id: currentFollowupId ?? undefined,
-    });
-    currentQidRef.current = currentFollowupId ? null : currentQuestion.id;
-    setTranscript("");
-    setElapsed(0);
-    recordingRef.current = true;
-    setPipelineStatus("recording");
-  }, [interview, currentQuestion, currentFollowupId, media.stream, recorder, setPipelineStatus, setTranscript, pushError]);
-
-  const failTranscription = useCallback(
-    (message: string) => {
-      pushError(message);
-      setPipelineStatus("idle");
-      setTranscriptionFailed(true);
-    },
-    [pushError, setPipelineStatus],
-  );
-
-  const handleRetryAnswer = useCallback(() => {
-    setTranscriptionFailed(false);
-    setPipelineStatus("idle");
-    setTranscript("");
-  }, [setPipelineStatus, setTranscript]);
-
-  const handleSkipFailedQuestion = useCallback(async () => {
-    if (!interview) return;
+  const handleTextSubmit = useCallback(async () => {
+    if (!interview || !textInput.trim()) return;
+    setPipelineStatus("evaluating");
     try {
-      // Unblock the state machine first: it is stuck in TRANSCRIBING /
-      // WAITING_FOR_ANSWER because the failure happened after the
-      // TRANSCRIPTION_STARTED event was broadcast.
-      await api.setState(interview.id, "RUNNING").catch(() => undefined);
-      let next: Question | null = null;
-      try {
-        next = await api.skipQuestion(interview.id);
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 404) {
-          await api.endInterview(interview.id);
-          setState("COMPLETED");
-          setPipelineStatus("idle");
-          setTranscript("");
-          setTranscriptionFailed(false);
-          return;
-        }
-        throw err;
-      }
-      setCurrentQuestion(next);
-      setCurrentFollowupId(null);
-      setCurrentFollowupText(null);
-      setState("RUNNING");
-      setPipelineStatus("idle");
-      setTranscript("");
-      setTranscriptionFailed(false);
-    } catch (err) {
-      pushError(err instanceof ApiError ? err.message : "Could not skip the question. Please try again.");
-    }
-  }, [interview, setCurrentQuestion, setState, setPipelineStatus, setTranscript, pushError]);
-
-  const handleStopAnswer = useCallback(async () => {
-    if (!interview) return;
-    recordingRef.current = false;
-    wsRef.current?.send("ANSWER_STOPPED", {});
-    const result = await recorder.stop();
-    if (!result || result.blob.size === 0) {
-      failTranscription("No audio captured. Please try again or skip this question.");
-      return;
-    }
-    if (result.blob.size < 1000 || (await isSilentAudio(result.blob))) {
-      failTranscription(
-        "The recording captured no audio. Check that your microphone is not muted and the correct input device is selected, then try again or skip this question.",
-      );
-      return;
-    }
-    setPipelineStatus("transcribing");
-    wsRef.current?.send("TRANSCRIPTION_STARTED", {});
-    try {
-      const { text } = await transcribeAudio(result.blob);
-      if (!text.trim()) {
-        failTranscription("No speech detected. Please try again or skip this question.");
-        return;
-      }
-      setTranscript(text);
-      setPipelineStatus("evaluating");
-      if (currentFollowupId && currentFupRef.current) {
+      if (activeFollowupId) {
         await api.submitAnswer(interview.id, {
-          followup_id: currentFollowupId,
-          transcript: text,
-          duration_seconds: Math.max(1, Math.round(result.durationMs / 1000)),
+          followup_id: activeFollowupId,
+          transcript: textInput.trim(),
         });
-      } else if (currentQidRef.current ?? currentQuestion?.id) {
+      } else if (activeQuestionId) {
         await api.submitAnswer(interview.id, {
-          question_id: currentQidRef.current ?? currentQuestion!.id,
-          transcript: text,
-          duration_seconds: Math.max(1, Math.round(result.durationMs / 1000)),
+          question_id: activeQuestionId,
+          transcript: textInput.trim(),
         });
       }
+      setTextInput("");
     } catch (err) {
-      failTranscription(err instanceof ApiError ? err.message : "Transcription or evaluation failed");
+      pushError(err instanceof ApiError ? err.message : "Failed to submit answer");
+    } finally {
+      setPipelineStatus("idle");
     }
-  }, [interview, currentQuestion, currentFollowupId, recorder, setPipelineStatus, setTranscript, failTranscription]);
+  }, [interview, activeQuestionId, activeFollowupId, textInput, setPipelineStatus, pushError]);
 
   if (loading) {
     return (
@@ -307,6 +211,11 @@ export default function CandidatePage() {
       </div>
     );
   }
+
+  const isListening = listenStatus === "listening";
+  const isTranscribing = listenStatus === "transcribing";
+  const isEvaluating = listenStatus === "evaluating";
+  const isBusy = isTranscribing || isEvaluating;
 
   return (
     <div className="min-h-screen pb-10">
@@ -414,36 +323,6 @@ export default function CandidatePage() {
                 </div>
               )}
 
-              {transcriptionFailed && (
-                <Alert variant="destructive">
-                  <AlertTitle>Your answer could not be processed</AlertTitle>
-                  <AlertDescription>
-                    <p className="mb-3">
-                      Something went wrong while transcribing or evaluating your answer. You can try
-                      again or move on to the next question.
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleRetryAnswer}
-                        disabled={pipelineStatus !== "idle" || recorder.recording}
-                      >
-                        Try again
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleSkipFailedQuestion}
-                        disabled={recorder.recording}
-                      >
-                        Skip this question
-                      </Button>
-                    </div>
-                  </AlertDescription>
-                </Alert>
-              )}
-
               <QuestionCard
                 question={currentQuestion}
                 index={currentQuestion?.question_number ?? interview?.current_question_index ?? null}
@@ -462,41 +341,61 @@ export default function CandidatePage() {
                   <CardTitle className="text-sm">Your Answer</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {/* Listening status indicator */}
                   <div className="flex flex-wrap items-center gap-3">
-                    {!recorder.recording ? (
-                      <Button onClick={handleStartAnswer} disabled={!currentQuestion || state === "COMPLETED" || pipelineStatus !== "idle"}>
-                        <Mic className="h-4 w-4" /> Start Answer
-                      </Button>
-                    ) : (
-                      <Button variant="destructive" onClick={handleStopAnswer}>
-                        <Square className="h-4 w-4 fill-current" /> Stop Answer
-                      </Button>
+                    {isListening && (
+                      <div className="flex items-center gap-2 text-sm text-emerald-400">
+                        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
+                        Listening… speak now
+                      </div>
                     )}
-                    <Badge variant="muted">{formatDuration(elapsed)}</Badge>
-                    {pipelineStatus === "transcribing" && (
+                    {isTranscribing && (
                       <Badge variant="warning">
                         <Spinner className="mr-1 h-3 w-3" /> Transcribing…
                       </Badge>
                     )}
-                    {pipelineStatus === "evaluating" && (
+                    {isEvaluating && (
                       <Badge variant="info">
                         <Spinner className="mr-1 h-3 w-3" /> Evaluating…
                       </Badge>
                     )}
+                    {!isBusy && !isListening && state !== "COMPLETED" && currentQuestion && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Mic className="h-4 w-4" /> Waiting for speech…
+                      </div>
+                    )}
                   </div>
-                  {transcript ? (
-                    <p className="whitespace-pre-wrap rounded-md bg-secondary/40 p-3 text-sm">{transcript}</p>
+
+                  {/* Live transcript */}
+                  {liveTranscript ? (
+                    <p className="whitespace-pre-wrap rounded-md bg-secondary/40 p-3 text-sm">{liveTranscript}</p>
                   ) : (
                     <p className="text-sm text-muted-foreground/60">
-                      Click “Start Answer”, speak clearly, then “Stop Answer”. Your answer will be transcribed
-                      automatically.
+                      The system is listening continuously. Just speak your answer — it will be
+                      transcribed and evaluated automatically.
                     </p>
                   )}
-                  {recorder.recording && (
-                    <p className="flex items-center gap-2 text-xs text-red-400">
-                      <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" /> Recording…
-                    </p>
-                  )}
+
+                  {/* Text input fallback */}
+                  <div className="border-t border-border pt-3">
+                    <p className="mb-2 text-xs font-medium text-muted-foreground">Or type your answer:</p>
+                    <textarea
+                      value={textInput}
+                      onChange={(e) => setTextInput(e.target.value)}
+                      placeholder="Type your answer here…"
+                      rows={3}
+                      disabled={isBusy || state === "COMPLETED"}
+                      className="w-full rounded-md border border-border bg-secondary/30 p-2 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+                    />
+                    <Button
+                      onClick={handleTextSubmit}
+                      disabled={!textInput.trim() || isBusy || state === "COMPLETED"}
+                      className="mt-2"
+                      size="sm"
+                    >
+                      <Send className="h-4 w-4" /> Submit Text Answer
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </div>

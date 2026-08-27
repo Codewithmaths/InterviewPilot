@@ -72,6 +72,11 @@ TRANSITIONS: dict[str, set[str]] = {
     },
     InterviewState.NEXT_QUESTION.value: {
         InterviewState.RUNNING.value,
+        # Candidate may start speaking again (VAD auto-submit) before the
+        # interviewer advances; the answer pipeline must still be able to run.
+        InterviewState.WAITING_FOR_ANSWER.value,
+        InterviewState.TRANSCRIBING.value,
+        InterviewState.EVALUATING.value,
         InterviewState.COMPLETED.value,
     },
     InterviewState.COMPLETED.value: set(),
