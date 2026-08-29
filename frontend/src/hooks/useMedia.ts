@@ -55,9 +55,12 @@ export function useMedia(): MediaController {
         video: { width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: { echoCancellation: true, noiseSuppression: true },
       });
+      // Keep the tracks so WebRTC + STT can use them, but start both OFF.
+      // Users turn on the camera/mic when they actually need them.
+      s.getTracks().forEach((t) => (t.enabled = false));
       streamRef.current = s;
       setStream(s);
-      statesRef.current = { camera: "connected", mic: "connected" };
+      statesRef.current = { camera: "off", mic: "off" };
       sync();
       return true;
     } catch (err) {

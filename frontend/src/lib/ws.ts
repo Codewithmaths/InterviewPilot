@@ -77,6 +77,10 @@ export class WsClient {
     this.send("SIGNAL", { kind, ...data });
   }
 
+  sendMediaState(camera: string, mic: string): void {
+    this.send("MEDIA_STATE", { camera, mic });
+  }
+
   close(): void {
     this.shouldReconnect = false;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
