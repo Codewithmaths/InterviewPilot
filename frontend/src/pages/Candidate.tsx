@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Loader2, Mic, Send, Video } from "lucide-react";
+import { Loader2, Mic, MicOff, Send, Video } from "lucide-react";
 
 import { api, ApiError } from "@/lib/api";
 import { WsClient } from "@/lib/ws";
@@ -9,6 +9,7 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { useContinuousListening } from "@/hooks/useContinuousListening";
 import { useFaceSampler } from "@/hooks/useFaceSampler";
 import { useInterviewStore } from "@/store/useInterviewStore";
+import type { DeviceState } from "@/hooks/useMedia";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +56,9 @@ export default function CandidatePage() {
 
   const media = useMedia();
   const rtc = useWebRTC("candidate", wsClient, media.stream);
+
+  const [remoteCameraState, setRemoteCameraState] = useState<DeviceState>("off");
+  const [remoteMicState, setRemoteMicState] = useState<DeviceState>("off");
   const { lastResult } = useFaceSampler(localVideoRef, interview?.id ?? null, {
     intervalMs: 1000,
     active: joined && !!interview && state !== "COMPLETED",
@@ -120,9 +124,19 @@ export default function CandidatePage() {
     const onOpen = ws.on("CONNECTION_OPEN", () => setWsStatus("open"));
     const onInterviewer = ws.on("INTERVIEWER_CONNECTED", () => setPeerConnected(true));
     const onPeerLeft = ws.on("PEER_DISCONNECTED", (m) => {
-      if (m.payload?.role === "interviewer") setPeerConnected(false);
+      if (m.payload?.role === "interviewer") {
+        setPeerConnected(false);
+        setRemoteCameraState("off");
+        setRemoteMicState("off");
+      }
     });
     const onStarted = ws.on("INTERVIEW_STARTED", () => setState("RUNNING" as never));
+    const onMediaState = ws.on("MEDIA_STATE", (m) => {
+      if (m.payload?.from_role === "interviewer") {
+        if (typeof m.payload.camera === "string") setRemoteCameraState(m.payload.camera as DeviceState);
+        if (typeof m.payload.mic === "string") setRemoteMicState(m.payload.mic as DeviceState);
+      }
+    });
     const onQuestion = ws.on("QUESTION_CHANGED", (m) => {
       const num = m.payload?.question_number as number;
       setCurrentQuestion(questionsRef.current.find((q) => q.question_number === num) ?? null);
@@ -158,6 +172,7 @@ export default function CandidatePage() {
       onEvalDone();
       onEnded();
       onError();
+      onMediaState();
       ws.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -168,6 +183,13 @@ export default function CandidatePage() {
     const el = localVideoRef.current;
     if (el && media.stream && el.srcObject !== media.stream) el.srcObject = media.stream;
   }, [media.stream]);
+
+  // Broadcast local camera/mic state to the interviewer so their video panel
+  // reflects whether we currently have the camera/mic on or off.
+  useEffect(() => {
+    if (!joined || !wsClient) return;
+    wsClient.sendMediaState(media.cameraState, media.micState);
+  }, [joined, wsClient, media.cameraState, media.micState]);
 
   const handleJoin = useCallback(async () => {
     const granted = await media.requestMedia();
@@ -278,6 +300,8 @@ export default function CandidatePage() {
               <VideoPanel
                 stream={rtc.remoteStream}
                 label="Interviewer"
+                cameraState={remoteCameraState}
+                micState={remoteMicState}
                 showOverlay={false}
               />
               <Card>
@@ -363,6 +387,11 @@ export default function CandidatePage() {
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Mic className="h-4 w-4" /> Waiting for speech…
                       </div>
+                    )}
+                    {media.micState === "off" && state !== "COMPLETED" && currentQuestion && (
+                      <Badge variant="warning" className="text-amber-300">
+                        <MicOff className="mr-1 h-3 w-3" /> Microphone is off — turn it on to answer
+                      </Badge>
                     )}
                   </div>
 

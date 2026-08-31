@@ -118,6 +118,20 @@ async def _handle_message(ws: WebSocket, interview_id: int, role: str, raw: dict
         await manager.error(ws, "Unsupported signaling kind", "BAD_SIGNAL")
         return
 
+    if event_type == "MEDIA_STATE":
+        payload = raw.get("payload") or {}
+        await manager.send_to_peer(
+            interview_id,
+            role,
+            build_message(
+                WSEventType.MEDIA_STATE,
+                {**payload, "from_role": role},
+                interview_id,
+                role,
+            ),
+        )
+        return
+
     # State-driven lifecycle events: advance the interview state machine and echo
     # the event to both consoles so the live UX stays in sync.
     state_events = {

@@ -7,6 +7,7 @@ import { WsClient } from "@/lib/ws";
 import { useMedia } from "@/hooks/useMedia";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { useInterviewStore } from "@/store/useInterviewStore";
+import type { DeviceState } from "@/hooks/useMedia";
 import type { EvaluationCompletedPayload, Question } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -65,6 +66,9 @@ export default function InterviewerPage() {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const questionsRef = useRef<Question[]>([]);
 
+  const [remoteCameraState, setRemoteCameraState] = useState<DeviceState>("off");
+  const [remoteMicState, setRemoteMicState] = useState<DeviceState>("off");
+
   const isBusy = state === "TRANSCRIBING" || state === "EVALUATING" || state === "WAITING_FOR_ANSWER";
 
   // Build the candidate link from the current origin (single-origin deploy),
@@ -121,7 +125,11 @@ export default function InterviewerPage() {
     const onOpen = ws.on("CONNECTION_OPEN", () => setWsStatus("open"));
     const onJoined = ws.on("CANDIDATE_CONNECTED", () => setPeerConnected(true));
     const onPeerLeft = ws.on("PEER_DISCONNECTED", (m) => {
-      if (m.payload?.role === "candidate") setPeerConnected(false);
+      if (m.payload?.role === "candidate") {
+        setPeerConnected(false);
+        setRemoteCameraState("off");
+        setRemoteMicState("off");
+      }
     });
 
     const onState = ws.on("STATE_CHANGED", (m) => {
@@ -154,6 +162,12 @@ export default function InterviewerPage() {
     const onFace = ws.on("FACE_ANALYSIS_UPDATED", (m) => {
       setFaceStatus(m.payload as never);
     });
+    const onMediaState = ws.on("MEDIA_STATE", (m) => {
+      if (m.payload?.from_role === "candidate") {
+        if (typeof m.payload.camera === "string") setRemoteCameraState(m.payload.camera as DeviceState);
+        if (typeof m.payload.mic === "string") setRemoteMicState(m.payload.mic as DeviceState);
+      }
+    });
     const onEnded = ws.on("INTERVIEW_ENDED", () => {
       setState("COMPLETED" as never);
       setStarted(false);
@@ -179,6 +193,7 @@ export default function InterviewerPage() {
       onFace();
       onEnded();
       onError();
+      onMediaState();
       ws.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,6 +210,13 @@ export default function InterviewerPage() {
       void rtc.negotiate();
     }
   }, [media.stream, peerConnected, rtc, wsStatus]);
+
+  // Broadcast local camera/mic state to the candidate so their video panel
+  // reflects whether we currently have the camera/mic on or off.
+  useEffect(() => {
+    if (!started || !wsClient) return;
+    wsClient.sendMediaState(media.cameraState, media.micState);
+  }, [started, wsClient, media.cameraState, media.micState]);
 
   const currentQuestionData = currentQuestion ?? null;
   // Show follow-ups only alongside the original question they belong to, and
@@ -412,8 +434,8 @@ export default function InterviewerPage() {
             <VideoPanel
               stream={rtc.remoteStream}
               label="Candidate"
-              cameraState="connected"
-              micState="connected"
+              cameraState={remoteCameraState}
+              micState={remoteMicState}
               faceCategory={faceStatus?.category ?? null}
             />
             <Card>

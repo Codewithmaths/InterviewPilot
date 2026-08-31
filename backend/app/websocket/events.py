@@ -29,6 +29,9 @@ class WSEventType(str, enum.Enum):
     # Face analysis
     FACE_ANALYSIS_UPDATED = "FACE_ANALYSIS_UPDATED"
 
+    # Media state (camera/mic on-off) relayed between peers
+    MEDIA_STATE = "MEDIA_STATE"
+
     # Connection
     CONNECTION_OPEN = "CONNECTION_OPEN"
     CANDIDATE_CONNECTED = "CANDIDATE_CONNECTED"
